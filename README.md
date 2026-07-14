@@ -40,13 +40,7 @@ Plik [`config.js`](config.js):
 
 ```javascript
 module.exports = {
-  homeUrl: 'https://kiosk.htpl.internal',
-  allowedHosts: [
-    'kiosk.htpl.internal',
-    // Dodaj hosty portali:
-    // 'enova.firma.internal',
-    // 'jira.firma.internal',
-  ],
+  homeUrl: 'http://dev.local',
   idle: {
     warningAfterMs: 150_000,  // 2 min 30 s
     endAfterMs: 180_000,      // 3 min
@@ -60,10 +54,6 @@ module.exports = {
 }
 ```
 
-### Biała lista domen
-
-Przed wdrożeniem uzupełnij `allowedHosts` o wszystkie domeny, do których pracownicy mogą nawigować (Enova, Jira itd.). Nawigacja poza listą jest blokowana.
-
 ### Certyfikaty wewnętrzne
 
 Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku deweloperskim możesz tymczasowo ustawić `dev.ignoreCertificateErrors: true`.
@@ -76,7 +66,7 @@ Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku 
 ├── config.js                # Konfiguracja URL, domen, timeoutów
 ├── src/
 │   ├── session-manager.js   # Czyszczenie sesji
-│   ├── navigation-guard.js  # Biała lista domen
+│   ├── navigation-guard.js  # Obsługa popupów w tym samym oknie
 │   ├── idle-timer.js        # Timeout bezczynności
 │   └── keyboard.js          # Klawiatura ekranowa Windows
 └── shell/
@@ -88,7 +78,7 @@ Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku 
 ## Wdrożenie na stanowisku kioskowym
 
 1. Zainstaluj Node.js i zależności (`npm install`).
-2. Uzupełnij `allowedHosts` w `config.js`.
+2. Ustaw `homeUrl` w `config.js`.
 3. Zainstaluj firmowy certyfikat CA (jeśli witryny używają HTTPS wewnętrznego).
 4. Uruchom aplikację w trybie kiosk (`npm start`).
 5. Skonfiguruj autostart Windows (np. skrót w folderze Startup lub harmonogram zadań).

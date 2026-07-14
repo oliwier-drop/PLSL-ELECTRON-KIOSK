@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>PLSL Kiosk</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <link rel="stylesheet" href="overlay.css" />
+  </head>
+  <body>
+    <div class="backdrop">
+      <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <h2 id="confirm-title">Zakończyć sesję?</h2>
+        <p id="confirm-message">
+          Wszystkie dane sesji zostaną usunięte. Użytkownik zostanie wylogowany
+          z Enovy, Jiry i innych portali.
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="confirm-cancel" class="modal-btn">Anuluj</button>
+          <button type="button" id="confirm-ok" class="modal-btn modal-btn--danger">
+            Zakończ sesję
+          </button>
+        </div>
+      </div>
+
+      <div id="idle-modal" class="modal hidden" role="dialog" aria-modal="true">
+        <h2>Sesja wygasa</h2>
+        <p>
+          Sesja zostanie zakończona za
+          <strong id="idle-countdown">30</strong> sekund.
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="idle-continue" class="modal-btn modal-btn--primary">
+            Kontynuuj
+          </button>
+          <button type="button" id="idle-end" class="modal-btn modal-btn--danger">
+            Zakończ teraz
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <script src="overlay.js"></script>
+  </body>
+</html>

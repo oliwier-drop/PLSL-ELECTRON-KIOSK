@@ -1,8 +1,7 @@
 class IdleTimer {
-  constructor(config, mainWindow, onEndSession) {
+  constructor(config, callbacks) {
     this.config = config
-    this.mainWindow = mainWindow
-    this.onEndSession = onEndSession
+    this.callbacks = callbacks
     this.warningTimer = null
     this.endTimer = null
     this.countdownInterval = null
@@ -25,20 +24,9 @@ class IdleTimer {
     }
   }
 
-  hideWarning() {
-    if (!this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('idle:hide')
-    }
-  }
-
   showWarning() {
     this.remainingSeconds = Math.floor(this.config.idle.countdownMs / 1000)
-
-    if (!this.mainWindow.isDestroyed()) {
-      this.mainWindow.webContents.send('idle:warning', {
-        seconds: this.remainingSeconds,
-      })
-    }
+    this.callbacks.showWarning?.(this.remainingSeconds)
 
     this.countdownInterval = setInterval(() => {
       this.remainingSeconds -= 1
@@ -47,23 +35,18 @@ class IdleTimer {
         this.countdownInterval = null
         return
       }
-      if (!this.mainWindow.isDestroyed()) {
-        this.mainWindow.webContents.send('idle:warning', {
-          seconds: this.remainingSeconds,
-        })
-      }
+      this.callbacks.updateWarning?.(this.remainingSeconds)
     }, 1000)
 
     this.endTimer = setTimeout(() => {
       this.clearTimers()
-      this.hideWarning()
-      this.onEndSession()
+      this.callbacks.onExpire?.()
     }, this.config.idle.countdownMs)
   }
 
   reset() {
     this.clearTimers()
-    this.hideWarning()
+    this.callbacks?.hideWarning?.()
 
     this.warningTimer = setTimeout(() => {
       this.showWarning()
@@ -72,12 +55,6 @@ class IdleTimer {
 
   continueSession() {
     this.reset()
-  }
-
-  endNow() {
-    this.clearTimers()
-    this.hideWarning()
-    this.onEndSession()
   }
 
   destroy() {

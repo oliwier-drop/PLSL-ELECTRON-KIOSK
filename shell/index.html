@@ -5,75 +5,39 @@
     <title>PLSL Kiosk</title>
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'"
     />
     <link rel="stylesheet" href="shell.css" />
   </head>
   <body>
-    <div id="content-area"></div>
-
-    <footer id="toolbar">
-      <div class="toolbar-group">
-        <button type="button" class="toolbar-btn" data-action="back">
-          <span class="btn-icon">&#8592;</span>
-          <span class="btn-label">Wstecz</span>
-        </button>
-        <button type="button" class="toolbar-btn" data-action="home">
-          <span class="btn-icon">&#8962;</span>
-          <span class="btn-label">Strona główna</span>
-        </button>
-        <button type="button" class="toolbar-btn" data-action="refresh">
-          <span class="btn-icon">&#8635;</span>
-          <span class="btn-label">Odśwież</span>
-        </button>
-        <button type="button" class="toolbar-btn" data-action="keyboard">
-          <span class="btn-icon">&#9000;</span>
-          <span class="btn-label">Klawiatura</span>
-        </button>
+    <header id="toolbar">
+      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+      <div class="toolbar-start">
+        <img id="company-logo" src="" alt="Logo firmy" class="company-logo" />
+        <div class="toolbar-group">
+          <button type="button" class="toolbar-btn" data-action="back">
+            <span class="btn-icon">&#8592;</span>
+            <span class="btn-label">Wstecz</span>
+          </button>
+          <button type="button" class="toolbar-btn" data-action="home">
+            <span class="btn-icon">&#8962;</span>
+            <span class="btn-label">Strona główna</span>
+          </button>
+          <button type="button" class="toolbar-btn" data-action="refresh">
+            <span class="btn-icon">&#8635;</span>
+            <span class="btn-label">Odśwież</span>
+          </button>
+          <button type="button" class="toolbar-btn" data-action="keyboard">
+            <span class="btn-icon">&#9000;</span>
+            <span class="btn-label">Klawiatura</span>
+          </button>
+        </div>
       </div>
       <button type="button" class="toolbar-btn toolbar-btn--danger" data-action="end-session">
         <span class="btn-icon">&#10005;</span>
         <span class="btn-label">Zakończ sesję</span>
       </button>
-    </footer>
-
-    <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
-
-    <div id="confirm-modal" class="modal hidden" role="dialog" aria-modal="true">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <h2>Zakończyć sesję?</h2>
-        <p>
-          Wszystkie dane sesji zostaną usunięte. Użytkownik zostanie wylogowany
-          z Enovy, Jiry i innych portali.
-        </p>
-        <div class="modal-actions">
-          <button type="button" class="modal-btn" data-confirm="cancel">Anuluj</button>
-          <button type="button" class="modal-btn modal-btn--danger" data-confirm="ok">
-            Zakończ sesję
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div id="idle-modal" class="modal hidden" role="dialog" aria-modal="true">
-      <div class="modal-backdrop"></div>
-      <div class="modal-content">
-        <h2>Sesja wygasa</h2>
-        <p>
-          Sesja zostanie zakończona za
-          <strong id="idle-countdown">30</strong> sekund.
-        </p>
-        <div class="modal-actions">
-          <button type="button" class="modal-btn modal-btn--primary" data-idle="continue">
-            Kontynuuj
-          </button>
-          <button type="button" class="modal-btn modal-btn--danger" data-idle="end">
-            Zakończ teraz
-          </button>
-        </div>
-      </div>
-    </div>
+    </header>
 
     <script src="shell.js"></script>
   </body>

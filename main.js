@@ -1,44 +1,182 @@
-const { app, BrowserWindow, BrowserView, ipcMain } = require('electron/main')
+const {
+  app,
+  BaseWindow,
+  WebContentsView,
+  ipcMain,
+  session,
+} = require('electron/main')
 const path = require('node:path')
 const config = require('./config')
-const { attachNavigationGuard } = require('./src/navigation-guard')
+const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
 const { showOnScreenKeyboard } = require('./src/keyboard')
 
-let mainWindow = null
-let browserView = null
+const PARTITION = 'persist:kiosk'
+
+let win = null
+let toolbarView = null
+let contentView = null
+let overlayView = null
 let sessionManager = null
 let idleTimer = null
+let keyboardDebounce = null
+let isOverlayVisible = false
+let isEndingSession = false
+const activeDownloads = new Map()
 
 if (config.dev.ignoreCertificateErrors) {
   app.commandLine.appendSwitch('ignore-certificate-errors')
 }
 
-function updateBrowserViewBounds() {
-  if (!mainWindow || !browserView) return
+function log(...args) {
+  console.log('[kiosk]', ...args)
+}
 
-  const [width, height] = mainWindow.getContentSize()
-  browserView.setBounds({
-    x: 0,
-    y: 0,
-    width,
-    height: height - config.toolbarHeight,
+function getKioskSession() {
+  return session.fromPartition(PARTITION)
+}
+
+function setupKioskSession() {
+  const kioskSession = getKioskSession()
+
+  kioskSession.on('will-download', (_event, item) => {
+    const id = item.getURL()
+    activeDownloads.set(id, item)
+    item.on('done', () => activeDownloads.delete(id))
   })
 }
 
+function getWindowSize() {
+  const [width, height] = win.getContentSize()
+  return { width, height }
+}
+
+function layoutViews() {
+  if (!win || win.isDestroyed()) return
+
+  const { width, height } = getWindowSize()
+  const toolbarHeight = config.toolbarHeight
+
+  toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
+  contentView.setBounds({
+    x: 0,
+    y: toolbarHeight,
+    width,
+    height: Math.max(0, height - toolbarHeight),
+  })
+
+  if (isOverlayVisible) {
+    overlayView.setBounds({ x: 0, y: 0, width, height })
+  }
+}
+
+function showOverlay(mode, payload = {}) {
+  if (!win || win.isDestroyed()) return
+
+  const { width, height } = getWindowSize()
+  overlayView.setBounds({ x: 0, y: 0, width, height })
+
+  if (!isOverlayVisible) {
+    win.contentView.addChildView(overlayView)
+    isOverlayVisible = true
+  }
+
+  overlayView.webContents.send('overlay:mode', { mode, ...payload })
+  overlayView.webContents.focus()
+}
+
+function hideOverlay() {
+  if (!win || win.isDestroyed()) return
+  if (!isOverlayVisible) return
+
+  win.contentView.removeChildView(overlayView)
+  isOverlayVisible = false
+
+  if (contentView && !contentView.webContents.isDestroyed()) {
+    contentView.webContents.focus()
+  }
+}
+
 function attachActivityTracking(webContents) {
-  webContents.on('before-input-event', () => {
-    idleTimer?.reset()
-  })
+  webContents.on('before-input-event', () => idleTimer?.reset())
+  webContents.on('did-navigate', () => idleTimer?.reset())
+  webContents.on('did-navigate-in-page', () => idleTimer?.reset())
+}
 
-  webContents.on('did-navigate', () => {
-    idleTimer?.reset()
-  })
+async function clearKioskSession() {
+  const kioskSession = getKioskSession()
 
-  webContents.on('did-navigate-in-page', () => {
+  for (const item of activeDownloads.values()) {
+    item.cancel()
+  }
+  activeDownloads.clear()
+
+  await Promise.race([
+    kioskSession.clearStorageData(),
+    new Promise((resolve) => setTimeout(resolve, 8000)),
+  ])
+
+  await Promise.race([
+    kioskSession.clearCache(),
+    new Promise((resolve) => setTimeout(resolve, 5000)),
+  ])
+
+  kioskSession.clearAuthCache()
+}
+
+async function loadHome() {
+  const webContents = contentView.webContents
+
+  try {
+    webContents.navigationHistory.clear()
+  } catch (error) {
+    log('Nie udało się wyczyścić historii:', error.message)
+  }
+
+  try {
+    log('Ładowanie strony głównej:', config.homeUrl)
+    await webContents.loadURL(config.homeUrl)
+  } catch (error) {
+    log('Home nie załadowany, ładuję pustkę bezpieczeństwa:', error.message)
+    await webContents.loadURL('about:blank')
+  }
+
+  return webContents.getURL()
+}
+
+async function endSession() {
+  if (isEndingSession) {
+    return { ok: true, url: contentView.webContents.getURL() }
+  }
+
+  isEndingSession = true
+
+  try {
+    log('Zakończenie sesji, obecny URL:', contentView.webContents.getURL())
+
+    await clearKioskSession()
+    const afterUrl = await loadHome()
+
+    hideOverlay()
     idleTimer?.reset()
-  })
+
+    if (toolbarView && !toolbarView.webContents.isDestroyed()) {
+      toolbarView.webContents.send('session:ended', { url: afterUrl })
+    }
+
+    log('Reset sesji zakończony, adres:', afterUrl)
+    return { ok: true, url: afterUrl }
+  } catch (error) {
+    log('endSession błąd:', error.message)
+    hideOverlay()
+    if (toolbarView && !toolbarView.webContents.isDestroyed()) {
+      toolbarView.webContents.send('session:error', error.message)
+    }
+    return { ok: false, error: error.message }
+  } finally {
+    isEndingSession = false
+  }
 }
 
 function setupIpc() {
@@ -47,9 +185,9 @@ function setupIpc() {
     sessionManager?.goBack()
   })
 
-  ipcMain.handle('nav:home', () => {
+  ipcMain.handle('nav:home', async () => {
     idleTimer?.reset()
-    sessionManager?.goHome()
+    await sessionManager?.goHome()
   })
 
   ipcMain.handle('nav:refresh', () => {
@@ -57,86 +195,139 @@ function setupIpc() {
     sessionManager?.refresh()
   })
 
-  ipcMain.handle('keyboard:show', () => {
+  ipcMain.handle('keyboard:show', async () => {
     idleTimer?.reset()
-    showOnScreenKeyboard()
+    return showOnScreenKeyboard()
   })
 
-  ipcMain.handle('session:end', async () => {
-    await sessionManager?.endSession()
+  ipcMain.on('keyboard:focus', () => {
+    if (!config.keyboard?.autoShowOnFocus) return
+
     idleTimer?.reset()
+    clearTimeout(keyboardDebounce)
+    keyboardDebounce = setTimeout(() => {
+      showOnScreenKeyboard()
+    }, config.keyboard?.debounceMs ?? 300)
+  })
+
+  ipcMain.on('ui:show-confirm', () => {
+    idleTimer?.reset()
+    showOverlay('confirm')
+  })
+
+  ipcMain.on('ui:hide-overlay', () => {
+    idleTimer?.reset()
+    hideOverlay()
+  })
+
+  ipcMain.handle('confirm:accept', async () => {
+    return endSession()
   })
 
   ipcMain.handle('idle:continue', () => {
+    hideOverlay()
     idleTimer?.continueSession()
   })
 
   ipcMain.handle('idle:endNow', async () => {
-    await sessionManager?.endSession()
-    idleTimer?.reset()
+    return endSession()
   })
 
   ipcMain.on('activity:ping', () => {
     idleTimer?.reset()
   })
+
+  ipcMain.handle('config:get', () => ({
+    logoPath: config.logoPath,
+    homeUrl: config.homeUrl,
+  }))
 }
 
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  win = new BaseWindow({
     width: 1920,
     height: 1080,
     kiosk: true,
     fullscreen: true,
     autoHideMenuBar: true,
+  })
+
+  toolbarView = new WebContentsView({
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
-      webSecurity: true,
     },
   })
 
-  browserView = new BrowserView({
+  contentView = new WebContentsView({
     webPreferences: {
+      preload: path.join(__dirname, 'browser-preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
-      partition: 'persist:kiosk',
+      partition: PARTITION,
     },
   })
 
-  mainWindow.setBrowserView(browserView)
-  updateBrowserViewBounds()
+  overlayView = new WebContentsView({
+    webPreferences: {
+      preload: path.join(__dirname, 'overlay-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      transparent: true,
+    },
+  })
+  overlayView.setBackgroundColor('#00000000')
 
-  sessionManager = new SessionManager(browserView, config)
+  win.contentView.addChildView(contentView)
+  win.contentView.addChildView(toolbarView)
 
-  attachNavigationGuard(browserView.webContents, config, (message) => {
-    if (!mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('nav:blocked', message)
-    }
+  sessionManager = new SessionManager(contentView, config)
+
+  attachWebContentsGuard(contentView.webContents)
+  attachActivityTracking(contentView.webContents)
+  attachActivityTracking(toolbarView.webContents)
+
+  idleTimer = new IdleTimer(config, {
+    showWarning: (seconds) => showOverlay('idle', { seconds }),
+    updateWarning: (seconds) => {
+      if (isOverlayVisible) {
+        overlayView.webContents.send('overlay:mode', { mode: 'idle', seconds })
+      }
+    },
+    hideWarning: () => {
+      if (isOverlayVisible) hideOverlay()
+    },
+    onExpire: async () => {
+      try {
+        await endSession()
+      } catch (error) {
+        log('auto idle end błąd:', error.message)
+      }
+    },
   })
 
-  idleTimer = new IdleTimer(config, mainWindow, async () => {
-    await sessionManager.endSession()
-    idleTimer.reset()
+  layoutViews()
+
+  win.on('resize', layoutViews)
+
+  toolbarView.webContents.loadFile(path.join(__dirname, 'shell', 'index.html'))
+  overlayView.webContents.loadFile(path.join(__dirname, 'shell', 'overlay.html'))
+
+  contentView.webContents.loadURL(config.homeUrl).catch((error) => {
+    log('Błąd startowej strony głównej:', error.message)
   })
-
-  attachActivityTracking(browserView.webContents)
-  attachActivityTracking(mainWindow.webContents)
-
-  setupIpc()
-
-  mainWindow.on('resize', updateBrowserViewBounds)
-
-  mainWindow.loadFile(path.join(__dirname, 'shell', 'index.html'))
-  browserView.webContents.loadURL(config.homeUrl)
 }
 
 app.whenReady().then(() => {
   const { globalShortcut } = require('electron')
 
+  setupKioskSession()
+  setupIpc()
   createWindow()
 
   if (config.dev.exitShortcut) {
@@ -146,7 +337,7 @@ app.whenReady().then(() => {
   }
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
+    if (BaseWindow.getAllWindows().length === 0) {
       createWindow()
     }
   })

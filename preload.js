@@ -10,22 +10,18 @@ contextBridge.exposeInMainWorld('kiosk', {
     show: () => ipcRenderer.invoke('keyboard:show'),
   },
   session: {
-    end: () => ipcRenderer.invoke('session:end'),
-  },
-  idle: {
-    continue: () => ipcRenderer.invoke('idle:continue'),
-    endNow: () => ipcRenderer.invoke('idle:endNow'),
+    requestEnd: () => ipcRenderer.send('ui:show-confirm'),
   },
   activity: {
     ping: () => ipcRenderer.send('activity:ping'),
   },
-  onNavBlocked: (callback) => {
-    ipcRenderer.on('nav:blocked', (_event, message) => callback(message))
+  config: {
+    get: () => ipcRenderer.invoke('config:get'),
   },
-  onIdleWarning: (callback) => {
-    ipcRenderer.on('idle:warning', (_event, data) => callback(data))
+  onSessionEnded: (callback) => {
+    ipcRenderer.on('session:ended', (_event, data) => callback(data))
   },
-  onIdleHide: (callback) => {
-    ipcRenderer.on('idle:hide', () => callback())
+  onSessionError: (callback) => {
+    ipcRenderer.on('session:error', (_event, message) => callback(message))
   },
 })
