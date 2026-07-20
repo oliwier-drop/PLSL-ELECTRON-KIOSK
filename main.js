@@ -6,7 +6,8 @@ const {
   session,
 } = require('electron/main')
 const path = require('node:path')
-const config = require('./config')
+const { loadConfig, getConfigPath } = require('./src/runtime-config')
+const config = loadConfig()
 const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
@@ -32,6 +33,8 @@ if (config.dev.ignoreCertificateErrors) {
 function log(...args) {
   console.log('[kiosk]', ...args)
 }
+
+log('Konfiguracja homeUrl:', config.homeUrl, '| plik:', getConfigPath())
 
 function getKioskSession() {
   return session.fromPartition(PARTITION)
@@ -99,9 +102,15 @@ function hideOverlay() {
 }
 
 function attachActivityTracking(webContents) {
-  webContents.on('before-input-event', () => idleTimer?.reset())
-  webContents.on('did-navigate', () => idleTimer?.reset())
-  webContents.on('did-navigate-in-page', () => idleTimer?.reset())
+  const maybeResetIdle = () => {
+    if (!isEndingSession) {
+      idleTimer?.reset()
+    }
+  }
+
+  webContents.on('before-input-event', maybeResetIdle)
+  webContents.on('did-navigate', maybeResetIdle)
+  webContents.on('did-navigate-in-page', maybeResetIdle)
 }
 
 async function clearKioskSession() {
@@ -151,6 +160,11 @@ async function endSession() {
   }
 
   isEndingSession = true
+  idleTimer?.cancelWarning()
+
+  if (isOverlayVisible && overlayView && !overlayView.webContents.isDestroyed()) {
+    overlayView.webContents.send('overlay:mode', { mode: 'ending' })
+  }
 
   try {
     log('Zakończenie sesji, obecny URL:', contentView.webContents.getURL())
@@ -295,7 +309,7 @@ function createWindow() {
   idleTimer = new IdleTimer(config, {
     showWarning: (seconds) => showOverlay('idle', { seconds }),
     updateWarning: (seconds) => {
-      if (isOverlayVisible) {
+      if (isOverlayVisible && !isEndingSession) {
         overlayView.webContents.send('overlay:mode', { mode: 'idle', seconds })
       }
     },

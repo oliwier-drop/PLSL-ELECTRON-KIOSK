@@ -1,12 +1,51 @@
 {
   "name": "plsl-electron-kiosk",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Firmowy kiosk pracowniczy",
   "main": "main.js",
+  "author": "Oliwier Drop",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder --win --x64",
+    "build:portable": "electron-builder --win portable --x64"
   },
   "devDependencies": {
-    "electron": "^35.0.0"
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "pl.htpl.plsl-kiosk",
+    "productName": "PLSL Kiosk",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "overlay-preload.js",
+      "browser-preload.js",
+      "config.js",
+      "src/**/*",
+      "shell/**/*"
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "PLSL Kiosk",
+      "include": "build/installer.nsh"
+    }
   }
 }
