@@ -41,9 +41,6 @@ document.getElementById('toolbar').addEventListener('click', async (event) => {
     case 'refresh':
       await window.kiosk.nav.refresh()
       break
-    case 'keyboard':
-      await window.kiosk.keyboard.show()
-      break
     case 'end-session':
       window.kiosk.session.requestEnd()
       break

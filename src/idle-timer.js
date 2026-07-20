@@ -44,6 +44,11 @@ class IdleTimer {
     }, this.config.idle.countdownMs)
   }
 
+  cancelWarning() {
+    this.clearTimers()
+    this.callbacks?.hideWarning?.()
+  }
+
   reset() {
     this.clearTimers()
     this.callbacks?.hideWarning?.()
