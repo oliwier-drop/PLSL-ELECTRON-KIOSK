@@ -6,7 +6,7 @@ Firmowy kiosk pracowniczy oparty na [Electron](https://www.electronjs.org/docs/l
 
 - Node.js 18+
 - npm
-- Windows 10/11 (klawiatura ekranowa TabTip)
+- Windows 10/11
 
 ## Instalacja
 
@@ -32,6 +32,17 @@ W trybie deweloperskim aplikację można zamknąć skrótem `Ctrl+Shift+Q`.
 | **Zakończ sesję** | Czyści cookies, cache, storage i wraca na stronę startową |
 
 Po **2 minutach 30 sekundach** bezczynności pojawia się ostrzeżenie z 30-sekundowym odliczaniem. Brak reakcji uruchamia tę samą procedurę co przycisk „Zakończ sesję”.
+
+## Klawiatura ekranowa
+
+Aplikacja zawiera wbudowaną klawiaturę ekranową w stylu **Windows 11 Touch (układ Default)** — opartą o [simple-keyboard](https://github.com/hodgef/simple-keyboard). Panel pojawia się automatycznie na dole ekranu po fokusie w polu tekstowym. Ukrywasz ją przyciskiem **✕** w pasku nagłówka lub kliknięciem poza polem tekstowym.
+
+- **4 rzędy** klawiszy, klaster wyśrodkowany (~65% szerokości)
+- **⇧ Shift** — wielkie litery (reset po wpisaniu znaku)
+- **&123** — warstwa cyfr i symboli
+- **Long-press** na literze — polskie znaki (np. przytrzymaj `l` → `ł`)
+- **Long-press** na q–p — cyfry 1–0 (hint w rogu klawisza)
+- **← →** — przesuwanie kursora w polu tekstowym
 
 ## Konfiguracja
 
@@ -70,6 +81,13 @@ module.exports = {
     countdownMs: 30_000,      // 30 s na reakcję
   },
   toolbarHeight: 80,
+  keyboard: {
+    autoShowOnFocus: true,
+    debounceMs: 300,
+    height: 320,
+    widthPercent: 65,
+    layout: 'w11-touch',
+  },
   dev: {
     ignoreCertificateErrors: false,  // true tylko w dev przy self-signed cert
     exitShortcut: 'CommandOrControl+Shift+Q',
@@ -100,28 +118,22 @@ Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku 
 ```
 ├── main.js                  # Proces główny, BrowserView, IPC
 ├── preload.js               # Bezpieczne API dla powłoki
+├── keyboard-preload.js      # Mostek IPC dla panelu klawiatury
+├── browser-preload.js       # Preload stron www (fokus, wstrzykiwanie tekstu)
 ├── config.js                # Konfiguracja URL, domen, timeoutów
 ├── src/
 │   ├── session-manager.js   # Czyszczenie sesji
 │   ├── navigation-guard.js  # Obsługa popupów w tym samym oknie
 │   ├── idle-timer.js        # Timeout bezczynności
-│   ├── keyboard.js          # Klawiatura ekranowa Windows
 │   └── runtime-config.js    # Wczytywanie config.json z ProgramData
 ├── build/
 │   └── installer.nsh        # Niestandardowa strona instalatora NSIS
 └── shell/
-    ├── index.html           # Pasek sterowania i modale
+    ├── index.html           # Pasek sterowania
+    ├── keyboard.html        # Panel klawiatury simple-keyboard
+    ├── keyboard.js
+    ├── keyboard.css
     ├── shell.css
     └── shell.js
 ```
 
-## Wdrożenie na stanowisku kioskowym
-
-1. Zbuduj instalator: `npm run build`.
-2. Uruchom `dist/PLSL Kiosk Setup *.exe` i podaj adres strony głównej.
-3. Zainstaluj firmowy certyfikat CA (jeśli witryny używają HTTPS wewnętrznego).
-4. Skonfiguruj autostart Windows (np. skrót w folderze Startup lub harmonogram zadań).
-
-## Rozszerzenia na później
-
-- Osobny timeout dla stron odcinków płacowych (wzorzec URL w `config.js`)

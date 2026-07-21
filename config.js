@@ -22,6 +22,14 @@ module.exports = {
 
     debounceMs: 300,
 
+    height: 320,
+
+    widthPercent: 65,
+
+    layout: 'w11-touch',
+
+    hideOnBlurDelayMs: 200,
+
   },
 
   dev: {

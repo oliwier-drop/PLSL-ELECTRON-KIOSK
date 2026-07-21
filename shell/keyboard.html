@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Klawiatura</title>
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <link rel="stylesheet" href="vendor/simple-keyboard/index.css" />
+    <link rel="stylesheet" href="keyboard.css" />
+  </head>
+  <body>
+    <div class="keyboard-panel">
+      <div class="keyboard-header">
+        <button type="button" id="keyboard-close" class="keyboard-hide-btn">Ukryj klawiaturę</button>
+      </div>
+      <div id="key-alts-popup" class="key-alts-popup hidden" aria-hidden="true"></div>
+      <div id="keyboard" class="simple-keyboard"></div>
+    </div>
+    <script src="vendor/simple-keyboard/index.js"></script>
+    <script src="keyboard.js"></script>
+  </body>
+</html>

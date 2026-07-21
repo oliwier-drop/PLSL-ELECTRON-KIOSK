@@ -1,6 +1,6 @@
 {
   "name": "plsl-electron-kiosk",
-  "version": "1.0.2",
+  "version": "1.1.0-beta.1",
   "description": "Firmowy kiosk pracowniczy",
   "main": "main.js",
   "author": "Oliwier Drop",
@@ -24,6 +24,7 @@
       "preload.js",
       "overlay-preload.js",
       "browser-preload.js",
+      "keyboard-preload.js",
       "config.js",
       "src/**/*",
       "shell/**/*"
@@ -44,8 +45,13 @@
       "perMachine": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "shortcutName": "PLSL Kiosk",
+      "shortcutName": "PLSL Kiosk (Beta)",
+      "artifactName": "PLSL-Kiosk-Setup-${version}.${ext}",
       "include": "build/installer.nsh"
     }
+  },
+  "dependencies": {
+    "simple-keyboard": "^3.8.165",
+    "simple-keyboard-layouts": "^3.4.239"
   }
 }

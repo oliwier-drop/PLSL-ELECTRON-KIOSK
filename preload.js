@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('kiosk', {
   },
   keyboard: {
     show: () => ipcRenderer.invoke('keyboard:show'),
+    hide: () => ipcRenderer.send('keyboard:hide'),
   },
   session: {
     requestEnd: () => ipcRenderer.send('ui:show-confirm'),

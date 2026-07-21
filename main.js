@@ -11,18 +11,19 @@ const config = loadConfig()
 const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
-const { showOnScreenKeyboard } = require('./src/keyboard')
 
 const PARTITION = 'persist:kiosk'
 
 let win = null
 let toolbarView = null
 let contentView = null
+let keyboardView = null
 let overlayView = null
 let sessionManager = null
 let idleTimer = null
 let keyboardDebounce = null
 let isOverlayVisible = false
+let isKeyboardVisible = false
 let isEndingSession = false
 const activeDownloads = new Map()
 
@@ -55,23 +56,52 @@ function getWindowSize() {
   return { width, height }
 }
 
+function getKeyboardHeight() {
+  if (!isKeyboardVisible) return 0
+  return config.keyboard?.height ?? 280
+}
+
 function layoutViews() {
   if (!win || win.isDestroyed()) return
 
   const { width, height } = getWindowSize()
   const toolbarHeight = config.toolbarHeight
+  const keyboardHeight = getKeyboardHeight()
 
   toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
   contentView.setBounds({
     x: 0,
     y: toolbarHeight,
     width,
-    height: Math.max(0, height - toolbarHeight),
+    height: Math.max(0, height - toolbarHeight - keyboardHeight),
   })
+
+  if (keyboardView) {
+    keyboardView.setBounds({
+      x: 0,
+      y: height - keyboardHeight,
+      width,
+      height: keyboardHeight,
+    })
+  }
 
   if (isOverlayVisible) {
     overlayView.setBounds({ x: 0, y: 0, width, height })
   }
+}
+
+function showKeyboard() {
+  if (!keyboardView || keyboardView.webContents.isDestroyed()) return
+
+  isKeyboardVisible = true
+  layoutViews()
+}
+
+function hideKeyboard() {
+  if (!isKeyboardVisible) return
+
+  isKeyboardVisible = false
+  layoutViews()
 }
 
 function showOverlay(mode, payload = {}) {
@@ -111,6 +141,13 @@ function attachActivityTracking(webContents) {
   webContents.on('before-input-event', maybeResetIdle)
   webContents.on('did-navigate', maybeResetIdle)
   webContents.on('did-navigate-in-page', maybeResetIdle)
+}
+
+function attachKeyboardDismiss(webContents) {
+  const hideOnNavigate = () => hideKeyboard()
+
+  webContents.on('did-navigate', hideOnNavigate)
+  webContents.on('did-navigate-in-page', hideOnNavigate)
 }
 
 async function clearKioskSession() {
@@ -173,6 +210,7 @@ async function endSession() {
     const afterUrl = await loadHome()
 
     hideOverlay()
+    hideKeyboard()
     idleTimer?.reset()
 
     if (toolbarView && !toolbarView.webContents.isDestroyed()) {
@@ -211,7 +249,8 @@ function setupIpc() {
 
   ipcMain.handle('keyboard:show', async () => {
     idleTimer?.reset()
-    return showOnScreenKeyboard()
+    showKeyboard()
+    return true
   })
 
   ipcMain.on('keyboard:focus', () => {
@@ -220,8 +259,21 @@ function setupIpc() {
     idleTimer?.reset()
     clearTimeout(keyboardDebounce)
     keyboardDebounce = setTimeout(() => {
-      showOnScreenKeyboard()
+      showKeyboard()
     }, config.keyboard?.debounceMs ?? 300)
+  })
+
+  ipcMain.on('keyboard:hide', () => {
+    idleTimer?.reset()
+    hideKeyboard()
+  })
+
+  ipcMain.on('keyboard:key', (_event, { key }) => {
+    idleTimer?.reset()
+
+    if (!contentView || contentView.webContents.isDestroyed()) return
+
+    contentView.webContents.send('keyboard:inject', { key })
   })
 
   ipcMain.on('ui:show-confirm', () => {
@@ -297,13 +349,24 @@ function createWindow() {
   })
   overlayView.setBackgroundColor('#00000000')
 
+  keyboardView = new WebContentsView({
+    webPreferences: {
+      preload: path.join(__dirname, 'keyboard-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+
   win.contentView.addChildView(contentView)
   win.contentView.addChildView(toolbarView)
+  win.contentView.addChildView(keyboardView)
 
   sessionManager = new SessionManager(contentView, config)
 
   attachWebContentsGuard(contentView.webContents)
   attachActivityTracking(contentView.webContents)
+  attachKeyboardDismiss(contentView.webContents)
   attachActivityTracking(toolbarView.webContents)
 
   idleTimer = new IdleTimer(config, {
@@ -330,6 +393,7 @@ function createWindow() {
   win.on('resize', layoutViews)
 
   toolbarView.webContents.loadFile(path.join(__dirname, 'shell', 'index.html'))
+  keyboardView.webContents.loadFile(path.join(__dirname, 'shell', 'keyboard.html'))
   overlayView.webContents.loadFile(path.join(__dirname, 'shell', 'overlay.html'))
 
   contentView.webContents.loadURL(config.homeUrl).catch((error) => {
