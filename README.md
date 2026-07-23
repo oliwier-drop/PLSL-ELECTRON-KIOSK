@@ -141,13 +141,3 @@ Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku 
     └── vendor/simple-keyboard/
 ```
 
-## Wdrożenie na stanowisku kioskowym
-
-1. Zbuduj instalator: `npm run build`.
-2. Uruchom `dist/PLSL Kiosk Setup *.exe` i podaj adres strony głównej.
-3. Zainstaluj firmowy certyfikat CA (jeśli witryny używają HTTPS wewnętrznego).
-4. Skonfiguruj autostart Windows (np. skrót w folderze Startup lub harmonogram zadań).
-
-## Rozszerzenia na później
-
-- Osobny timeout dla stron odcinków płacowych (wzorzec URL w `config.js`)

@@ -129,14 +129,18 @@ function hideOverlay() {
 
 function attachActivityTracking(webContents) {
   const maybeResetIdle = () => {
-    if (!isEndingSession) {
-      idleTimer?.reset()
-    }
+    resetIdleIfActive()
   }
 
   webContents.on('before-input-event', maybeResetIdle)
   webContents.on('did-navigate', maybeResetIdle)
   webContents.on('did-navigate-in-page', maybeResetIdle)
+}
+
+function resetIdleIfActive() {
+  if (!isEndingSession) {
+    idleTimer?.reset()
+  }
 }
 
 async function clearKioskSession() {
@@ -186,14 +190,17 @@ async function endSession() {
   }
 
   isEndingSession = true
-  idleTimer?.cancelWarning()
 
-  if (isOverlayVisible && overlayView && !overlayView.webContents.isDestroyed()) {
-    overlayView.webContents.send('overlay:mode', { mode: 'ending' })
-  }
+  // Zatrzymaj odliczanie, ale NIE chowaj overlay — najpierw pokaż „Kończenie sesji…”.
+  idleTimer?.stopTimers()
+  showOverlay('ending')
 
   try {
     log('Zakończenie sesji, obecny URL:', contentView.webContents.getURL())
+
+    if (isKeyboardVisible) {
+      hideKeyboard()
+    }
 
     await clearKioskSession()
     const afterUrl = await loadHome()
@@ -221,22 +228,22 @@ async function endSession() {
 
 function setupIpc() {
   ipcMain.handle('nav:back', () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     sessionManager?.goBack()
   })
 
   ipcMain.handle('nav:home', async () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     await sessionManager?.goHome()
   })
 
   ipcMain.handle('nav:refresh', () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     sessionManager?.refresh()
   })
 
   ipcMain.handle('keyboard:show', async () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     showKeyboard()
     return true
   })
@@ -262,7 +269,7 @@ function setupIpc() {
     // Nie przełączaj fokusu na contentView przy każdym klawiszu — Enova (i podobne)
     // przy focus robi select-all i miga zaznaczeniem. Znaki wstrzykujemy do
     // ostatniego pola przez preload, bez wc.focus()/sendInputEvent.
-    idleTimer?.reset()
+    resetIdleIfActive()
     contentView.webContents.send('keyboard:inject', { key })
   })
 
@@ -276,7 +283,7 @@ function setupIpc() {
   }))
 
   ipcMain.on('keyboard:focus', () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     if (config.keyboard?.autoShowOnFocus !== false) {
       showKeyboard()
     }
@@ -287,12 +294,12 @@ function setupIpc() {
   })
 
   ipcMain.on('ui:show-confirm', () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     showOverlay('confirm')
   })
 
   ipcMain.on('ui:hide-overlay', () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
     hideOverlay()
   })
 
@@ -310,7 +317,7 @@ function setupIpc() {
   })
 
   ipcMain.on('activity:ping', () => {
-    idleTimer?.reset()
+    resetIdleIfActive()
   })
 
   ipcMain.handle('config:get', () => ({
@@ -386,14 +393,12 @@ function createWindow() {
       }
     },
     hideWarning: () => {
-      if (isOverlayVisible) hideOverlay()
+      if (isOverlayVisible && !isEndingSession) hideOverlay()
     },
-    onExpire: async () => {
-      try {
-        await endSession()
-      } catch (error) {
+    onExpire: () => {
+      endSession().catch((error) => {
         log('auto idle end błąd:', error.message)
-      }
+      })
     },
   })
 
