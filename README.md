@@ -6,7 +6,7 @@ Firmowy kiosk pracowniczy oparty na [Electron](https://www.electronjs.org/docs/l
 
 - Node.js 18+
 - npm
-- Windows 10/11 (klawiatura ekranowa TabTip)
+- Windows 10/11 (własna klawiatura ekranowa uruchamiana w kiosku)
 
 ## Instalacja
 
@@ -32,6 +32,8 @@ W trybie deweloperskim aplikację można zamknąć skrótem `Ctrl+Shift+Q`.
 | **Zakończ sesję** | Czyści cookies, cache, storage i wraca na stronę startową |
 
 Po **2 minutach 30 sekundach** bezczynności pojawia się ostrzeżenie z 30-sekundowym odliczaniem. Brak reakcji uruchamia tę samą procedurę co przycisk „Zakończ sesję”.
+
+Klawiatura ekranowa pojawia się automatycznie po fokusie w polu tekstowym (`input` / `textarea`) jako osobny widok Electron na dole okna — bez systemowego TabTip. Widok strony jest wtedy zmniejszany, żeby pole nie chowało się pod klawiaturą.
 
 ## Konfiguracja
 
@@ -70,12 +72,29 @@ module.exports = {
     countdownMs: 30_000,      // 30 s na reakcję
   },
   toolbarHeight: 80,
+  keyboard: {
+    autoShowOnFocus: true,
+    debounceMs: 300,
+    height: 270,
+    widthPercent: 65,
+    hideOnBlurDelayMs: 200,
+  },
   dev: {
     ignoreCertificateErrors: false,  // true tylko w dev przy self-signed cert
     exitShortcut: 'CommandOrControl+Shift+Q',
   },
 }
 ```
+
+Klucze `keyboard.*`:
+
+| Klucz | Znaczenie |
+|-------|-----------|
+| `autoShowOnFocus` | Pokazuj klawiaturę po fokusie w polu tekstowym |
+| `debounceMs` | Opóźnienie przed pokazaniem po fokusie |
+| `hideOnBlurDelayMs` | Opóźnienie przed ukryciem po blur |
+| `height` | Wysokość panelu klawiatury (px) |
+| `widthPercent` | Szerokość panelu klawiatury (% okna) |
 
 ### Testowanie konfiguracji runtime lokalnie
 
@@ -98,21 +117,28 @@ Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku 
 ## Struktura projektu
 
 ```
-├── main.js                  # Proces główny, BrowserView, IPC
-├── preload.js               # Bezpieczne API dla powłoki
-├── config.js                # Konfiguracja URL, domen, timeoutów
+├── main.js                  # Proces główny, WebContentsView, IPC
+├── preload.js               # API powłoki (toolbar)
+├── browser-preload.js       # Detekcja focusu pól → klawiatura
+├── keyboard-preload.js      # API widoku klawiatury
+├── overlay-preload.js       # API overlay (idle / confirm)
+├── config.js                # Konfiguracja URL, timeoutów, klawiatury
 ├── src/
 │   ├── session-manager.js   # Czyszczenie sesji
 │   ├── navigation-guard.js  # Obsługa popupów w tym samym oknie
 │   ├── idle-timer.js        # Timeout bezczynności
-│   ├── keyboard.js          # Klawiatura ekranowa Windows
 │   └── runtime-config.js    # Wczytywanie config.json z ProgramData
 ├── build/
 │   └── installer.nsh        # Niestandardowa strona instalatora NSIS
 └── shell/
     ├── index.html           # Pasek sterowania i modale
     ├── shell.css
-    └── shell.js
+    ├── shell.js
+    ├── overlay.html
+    ├── keyboard.html        # UI klawiatury ekranowej
+    ├── keyboard.js
+    ├── keyboard.css
+    └── vendor/simple-keyboard/
 ```
 
 ## Wdrożenie na stanowisku kioskowym

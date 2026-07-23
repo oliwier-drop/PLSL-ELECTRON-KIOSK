@@ -1,0 +1,220 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --keyboard-width: 65%;
+  --keyboard-max-width: 1248px;
+  --keyboard-min-width: 560px;
+  --key-height: 48px;
+  --key-gap: 5px;
+  --bg-toolbar: #1e293b;
+  --key-bg: #334155;
+  --key-bg-active: #475569;
+  --key-fn-bg: #263449;
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent: #3b82f6;
+  --border: #334155;
+  --hint: #94a3b8;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: var(--bg-toolbar);
+  color: var(--text-primary);
+}
+
+body {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+}
+
+.keyboard-panel {
+  display: flex;
+  flex-direction: column;
+  width: var(--keyboard-width);
+  min-width: var(--keyboard-min-width);
+  max-width: var(--keyboard-max-width);
+  height: 100%;
+  padding: 0.35rem 0.6rem 0.5rem;
+  gap: 0.35rem;
+  position: relative;
+}
+
+.keyboard-header {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+  min-height: 30px;
+  padding: 0 0.15rem;
+}
+
+.keyboard-hide-btn {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--key-bg);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.keyboard-hide-btn:hover,
+.keyboard-hide-btn:focus-visible {
+  background: var(--key-bg-active);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#keyboard.simple-keyboard {
+  flex-shrink: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.simple-keyboard.hg-theme-w11 {
+  background: transparent;
+  padding: 0;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-row:not(:last-child) {
+  margin-bottom: var(--key-gap) !important;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button {
+  height: var(--key-height);
+  min-height: var(--key-height);
+  max-height: var(--key-height);
+  font-size: 0.95rem;
+  line-height: 1;
+  background: var(--key-bg);
+  border: 1px solid var(--border);
+  border-bottom: 2px solid #0f172a;
+  color: var(--text-primary);
+  box-shadow: none;
+  border-radius: 6px;
+  padding: 0 4px;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button:active,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-activeButton {
+  background: var(--key-bg-active);
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.w11-hold {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-functionBtn,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-mod,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-shift,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-tab,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-esc {
+  background: var(--key-fn-bg);
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.w11-active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.simple-keyboard.hg-theme-w11 .hg-row .hg-button-container,
+.simple-keyboard.hg-theme-w11 .hg-row .hg-button:not(:last-child) {
+  margin-right: var(--key-gap);
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-tab {
+  flex: 1.4;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-enter {
+  flex: 1.8;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-shift {
+  flex: 1.5;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-bksp {
+  flex: 1.3;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-caps {
+  flex: 1.6;
+  background: var(--key-fn-bg);
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-caps.w11-active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-space {
+  flex: 5;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-mod {
+  flex: 1.1;
+}
+
+.key-alts-popup {
+  position: absolute;
+  z-index: 20;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: #0f172a;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.key-alts-popup.hidden {
+  display: none;
+}
+
+.key-alt-option {
+  min-width: 44px;
+  height: 44px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--key-bg);
+  color: var(--text-primary);
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+.key-alt-option:active,
+.key-alt-option:focus-visible,
+.key-alt-option.hot {
+  background: var(--accent);
+  color: #ffffff;
+  outline: none;
+}
+
+@media (max-width: 900px) {
+  :root {
+    --keyboard-width: 85%;
+    --keyboard-min-width: 0;
+    --key-height: 44px;
+  }
+}

@@ -11,7 +11,6 @@ const config = loadConfig()
 const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
-const { showOnScreenKeyboard } = require('./src/keyboard')
 
 const PARTITION = 'persist:kiosk'
 
@@ -19,11 +18,14 @@ let win = null
 let toolbarView = null
 let contentView = null
 let overlayView = null
+let keyboardView = null
 let sessionManager = null
 let idleTimer = null
-let keyboardDebounce = null
 let isOverlayVisible = false
+let isKeyboardVisible = false
 let isEndingSession = false
+
+const KEYBOARD_HEIGHT = config.keyboard?.height ?? 270
 const activeDownloads = new Map()
 
 if (config.dev.ignoreCertificateErrors) {
@@ -60,17 +62,41 @@ function layoutViews() {
 
   const { width, height } = getWindowSize()
   const toolbarHeight = config.toolbarHeight
+  const keyboardSpace = isKeyboardVisible ? KEYBOARD_HEIGHT : 0
 
   toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
   contentView.setBounds({
     x: 0,
     y: toolbarHeight,
     width,
-    height: Math.max(0, height - toolbarHeight),
+    height: Math.max(0, height - toolbarHeight - keyboardSpace),
   })
 
   if (isOverlayVisible) {
     overlayView.setBounds({ x: 0, y: 0, width, height })
+  }
+
+  if (isKeyboardVisible) {
+    keyboardView.setBounds({ x: 0, y: height - KEYBOARD_HEIGHT, width, height: KEYBOARD_HEIGHT })
+  }
+}
+
+function showKeyboard() {
+  if (!win || win.isDestroyed() || isKeyboardVisible) return
+  win.contentView.addChildView(keyboardView)
+  isKeyboardVisible = true
+  layoutViews()
+}
+
+function hideKeyboard() {
+  if (!win || win.isDestroyed() || !isKeyboardVisible) return
+  win.contentView.removeChildView(keyboardView)
+  isKeyboardVisible = false
+  layoutViews()
+
+  // Blur active element on the page to remove focus
+  if (contentView && !contentView.webContents.isDestroyed()) {
+    contentView.webContents.send('blur-active-element')
   }
 }
 
@@ -211,17 +237,53 @@ function setupIpc() {
 
   ipcMain.handle('keyboard:show', async () => {
     idleTimer?.reset()
-    return showOnScreenKeyboard()
+    showKeyboard()
+    return true
   })
 
-  ipcMain.on('keyboard:focus', () => {
-    if (!config.keyboard?.autoShowOnFocus) return
+  ipcMain.on('keyboard:hide', () => {
+    hideKeyboard()
+    if (contentView && !contentView.webContents.isDestroyed()) {
+      contentView.webContents.focus()
+    }
+  })
 
+  ipcMain.on('keyboard:key', (_event, { key }) => {
+    if (!contentView || contentView.webContents.isDestroyed()) return
+
+    if (key === '{esc}') {
+      hideKeyboard()
+      if (!contentView.webContents.isDestroyed()) {
+        contentView.webContents.focus()
+      }
+      return
+    }
+
+    // Nie przełączaj fokusu na contentView przy każdym klawiszu — Enova (i podobne)
+    // przy focus robi select-all i miga zaznaczeniem. Znaki wstrzykujemy do
+    // ostatniego pola przez preload, bez wc.focus()/sendInputEvent.
     idleTimer?.reset()
-    clearTimeout(keyboardDebounce)
-    keyboardDebounce = setTimeout(() => {
-      showOnScreenKeyboard()
-    }, config.keyboard?.debounceMs ?? 300)
+    contentView.webContents.send('keyboard:inject', { key })
+  })
+
+  ipcMain.handle('keyboard:timing', () => ({
+    debounceMs: config.keyboard?.debounceMs ?? 300,
+    hideOnBlurDelayMs: config.keyboard?.hideOnBlurDelayMs ?? 200,
+  }))
+
+  ipcMain.handle('keyboard:config', () => ({
+    widthPercent: config.keyboard?.widthPercent ?? 65,
+  }))
+
+  ipcMain.on('keyboard:focus', () => {
+    idleTimer?.reset()
+    if (config.keyboard?.autoShowOnFocus !== false) {
+      showKeyboard()
+    }
+  })
+
+  ipcMain.on('keyboard:blur', () => {
+    hideKeyboard()
   })
 
   ipcMain.on('ui:show-confirm', () => {
@@ -296,6 +358,16 @@ function createWindow() {
     },
   })
   overlayView.setBackgroundColor('#00000000')
+
+  keyboardView = new WebContentsView({
+    webPreferences: {
+      preload: path.join(__dirname, 'keyboard-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+  keyboardView.webContents.loadFile(path.join(__dirname, 'shell', 'keyboard.html'))
 
   win.contentView.addChildView(contentView)
   win.contentView.addChildView(toolbarView)
