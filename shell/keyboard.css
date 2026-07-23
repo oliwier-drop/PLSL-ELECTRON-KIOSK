@@ -111,15 +111,10 @@ body {
   background: var(--key-bg-active);
 }
 
-.simple-keyboard.hg-theme-w11 .hg-button.w11-hold {
-  background: var(--accent);
-  color: #ffffff;
-  border-color: var(--accent);
-}
-
 .simple-keyboard.hg-theme-w11 .hg-button.hg-functionBtn,
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-mod,
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-shift,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-pl,
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-tab,
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-esc {
   background: var(--key-fn-bg);
@@ -161,10 +156,15 @@ body {
   font-size: 0.8rem;
 }
 
-.simple-keyboard.hg-theme-w11 .hg-button.hg-key-caps.w11-active {
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-caps.w11-active,
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-pl.w11-active {
   background: var(--accent);
   color: #ffffff;
   border-color: var(--accent);
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-pl {
+  flex: 1.1;
 }
 
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-space {
@@ -175,42 +175,6 @@ body {
   flex: 1.1;
 }
 
-.key-alts-popup {
-  position: absolute;
-  z-index: 20;
-  display: flex;
-  gap: 4px;
-  padding: 6px;
-  background: #0f172a;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-}
-
-.key-alts-popup.hidden {
-  display: none;
-}
-
-.key-alt-option {
-  min-width: 44px;
-  height: 44px;
-  padding: 0 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--key-bg);
-  color: var(--text-primary);
-  font-size: 1.1rem;
-  cursor: pointer;
-}
-
-.key-alt-option:active,
-.key-alt-option:focus-visible,
-.key-alt-option.hot {
-  background: var(--accent);
-  color: #ffffff;
-  outline: none;
-}
-
 @media (max-width: 900px) {
   :root {
     --keyboard-width: 85%;
@@ -218,3 +182,4 @@ body {
     --key-height: 44px;
   }
 }
+
