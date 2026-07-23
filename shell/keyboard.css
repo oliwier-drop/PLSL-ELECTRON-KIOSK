@@ -154,83 +154,25 @@ body {
   flex: 1.3;
 }
 
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-caps {
+  flex: 1.6;
+  background: var(--key-fn-bg);
+  color: #cbd5e1;
+  font-size: 0.8rem;
+}
+
+.simple-keyboard.hg-theme-w11 .hg-button.hg-key-caps.w11-active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent);
+}
+
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-space {
   flex: 5;
 }
 
 .simple-keyboard.hg-theme-w11 .hg-button.hg-key-mod {
   flex: 1.1;
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='q'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='w'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='e'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='r'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='t'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='y'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='u'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='i'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='o'],
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='p'] {
-  position: relative;
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='q']::before {
-  content: '1';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='w']::before {
-  content: '2';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='e']::before {
-  content: '3';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='r']::before {
-  content: '4';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='t']::before {
-  content: '5';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='y']::before {
-  content: '6';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='u']::before {
-  content: '7';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='i']::before {
-  content: '8';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='o']::before {
-  content: '9';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='p']::before {
-  content: '0';
-}
-
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='q']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='w']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='e']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='r']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='t']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='y']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='u']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='i']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='o']::before,
-.simple-keyboard.hg-theme-w11 .hg-button[data-skbtn='p']::before {
-  position: absolute;
-  top: 4px;
-  left: 6px;
-  font-size: 0.55em;
-  color: var(--hint);
-  pointer-events: none;
 }
 
 .key-alts-popup {

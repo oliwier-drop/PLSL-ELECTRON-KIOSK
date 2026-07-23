@@ -11,20 +11,23 @@ const config = loadConfig()
 const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
+// keyboard logic is handled inline in main.js via keyboardView
 
 const PARTITION = 'persist:kiosk'
 
 let win = null
 let toolbarView = null
 let contentView = null
-let keyboardView = null
 let overlayView = null
+let keyboardView = null
 let sessionManager = null
 let idleTimer = null
 let keyboardDebounce = null
 let isOverlayVisible = false
 let isKeyboardVisible = false
 let isEndingSession = false
+
+const KEYBOARD_HEIGHT = 270
 const activeDownloads = new Map()
 
 if (config.dev.ignoreCertificateErrors) {
@@ -56,52 +59,46 @@ function getWindowSize() {
   return { width, height }
 }
 
-function getKeyboardHeight() {
-  if (!isKeyboardVisible) return 0
-  return config.keyboard?.height ?? 280
-}
-
 function layoutViews() {
   if (!win || win.isDestroyed()) return
 
   const { width, height } = getWindowSize()
   const toolbarHeight = config.toolbarHeight
-  const keyboardHeight = getKeyboardHeight()
 
   toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
   contentView.setBounds({
     x: 0,
     y: toolbarHeight,
     width,
-    height: Math.max(0, height - toolbarHeight - keyboardHeight),
+    height: Math.max(0, height - toolbarHeight),
   })
-
-  if (keyboardView) {
-    keyboardView.setBounds({
-      x: 0,
-      y: height - keyboardHeight,
-      width,
-      height: keyboardHeight,
-    })
-  }
 
   if (isOverlayVisible) {
     overlayView.setBounds({ x: 0, y: 0, width, height })
   }
+
+  if (isKeyboardVisible) {
+    keyboardView.setBounds({ x: 0, y: height - KEYBOARD_HEIGHT, width, height: KEYBOARD_HEIGHT })
+  }
 }
 
 function showKeyboard() {
-  if (!keyboardView || keyboardView.webContents.isDestroyed()) return
-
+  if (!win || win.isDestroyed() || isKeyboardVisible) return
+  const { width, height } = getWindowSize()
+  keyboardView.setBounds({ x: 0, y: height - KEYBOARD_HEIGHT, width, height: KEYBOARD_HEIGHT })
+  win.contentView.addChildView(keyboardView)
   isKeyboardVisible = true
-  layoutViews()
 }
 
 function hideKeyboard() {
-  if (!isKeyboardVisible) return
-
+  if (!win || win.isDestroyed() || !isKeyboardVisible) return
+  win.contentView.removeChildView(keyboardView)
   isKeyboardVisible = false
-  layoutViews()
+  
+  // Blur active element on the page to remove focus
+  if (contentView && !contentView.webContents.isDestroyed()) {
+    contentView.webContents.send('blur-active-element')
+  }
 }
 
 function showOverlay(mode, payload = {}) {
@@ -141,13 +138,6 @@ function attachActivityTracking(webContents) {
   webContents.on('before-input-event', maybeResetIdle)
   webContents.on('did-navigate', maybeResetIdle)
   webContents.on('did-navigate-in-page', maybeResetIdle)
-}
-
-function attachKeyboardDismiss(webContents) {
-  const hideOnNavigate = () => hideKeyboard()
-
-  webContents.on('did-navigate', hideOnNavigate)
-  webContents.on('did-navigate-in-page', hideOnNavigate)
 }
 
 async function clearKioskSession() {
@@ -210,7 +200,6 @@ async function endSession() {
     const afterUrl = await loadHome()
 
     hideOverlay()
-    hideKeyboard()
     idleTimer?.reset()
 
     if (toolbarView && !toolbarView.webContents.isDestroyed()) {
@@ -253,27 +242,87 @@ function setupIpc() {
     return true
   })
 
-  ipcMain.on('keyboard:focus', () => {
-    if (!config.keyboard?.autoShowOnFocus) return
-
-    idleTimer?.reset()
-    clearTimeout(keyboardDebounce)
-    keyboardDebounce = setTimeout(() => {
-      showKeyboard()
-    }, config.keyboard?.debounceMs ?? 300)
-  })
-
   ipcMain.on('keyboard:hide', () => {
-    idleTimer?.reset()
     hideKeyboard()
+    if (contentView && !contentView.webContents.isDestroyed()) {
+      contentView.webContents.focus()
+    }
   })
 
   ipcMain.on('keyboard:key', (_event, { key }) => {
-    idleTimer?.reset()
-
     if (!contentView || contentView.webContents.isDestroyed()) return
+    const wc = contentView.webContents
+    
+    // Ensure contentView has focus before sending key
+    wc.focus()
+    
+    // Esc hides keyboard and blurs the input
+    if (key === '{esc}') {
+      hideKeyboard()
+      if (!contentView.webContents.isDestroyed()) {
+        contentView.webContents.focus()
+      }
+      return
+    }
+    
+    const SPECIAL = {
+      '{bksp}': 'Backspace',
+      '{enter}': 'Return',
+      '{tab}': 'Tab',
+      '{arrowleft}': 'Left',
+      '{arrowright}': 'Right',
+    }
+    if (key === '{space}') {
+      wc.sendInputEvent({ type: 'char', keyCode: ' ' })
+      return
+    }
+    
+    // Special handling for Enter - trigger form submission
+    if (key === '{enter}') {
+      wc.executeJavaScript(`
+        (function() {
+          const el = document.activeElement
+          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
+            // Trigger keydown and keyup events
+            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
+            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
+            el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
+            
+            // Try to submit the form
+            let form = el.closest('form')
+            if (form) {
+              const submitEvent = new Event('submit', { bubbles: true, cancelable: true })
+              form.dispatchEvent(submitEvent)
+              if (!submitEvent.defaultPrevented) {
+                form.submit()
+              }
+            }
+          }
+        })()
+      `)
+      return
+    }
+    
+    const keyCode = SPECIAL[key]
+    if (keyCode) {
+      wc.sendInputEvent({ type: 'keyDown', keyCode })
+      wc.sendInputEvent({ type: 'keyUp', keyCode })
+      return
+    }
+    if (key && key.length === 1) {
+      wc.sendInputEvent({ type: 'char', keyCode: key })
+    }
+  })
 
-    contentView.webContents.send('keyboard:inject', { key })
+  ipcMain.on('keyboard:focus', () => {
+    idleTimer?.reset()
+    if (config.keyboard?.autoShowOnFocus !== false) {
+      showKeyboard()
+    }
+  })
+
+  ipcMain.on('keyboard:blur', () => {
+    hideKeyboard()
   })
 
   ipcMain.on('ui:show-confirm', () => {
@@ -357,16 +406,15 @@ function createWindow() {
       sandbox: true,
     },
   })
+  keyboardView.webContents.loadFile(path.join(__dirname, 'shell', 'keyboard.html'))
 
   win.contentView.addChildView(contentView)
   win.contentView.addChildView(toolbarView)
-  win.contentView.addChildView(keyboardView)
 
   sessionManager = new SessionManager(contentView, config)
 
   attachWebContentsGuard(contentView.webContents)
   attachActivityTracking(contentView.webContents)
-  attachKeyboardDismiss(contentView.webContents)
   attachActivityTracking(toolbarView.webContents)
 
   idleTimer = new IdleTimer(config, {
@@ -393,7 +441,6 @@ function createWindow() {
   win.on('resize', layoutViews)
 
   toolbarView.webContents.loadFile(path.join(__dirname, 'shell', 'index.html'))
-  keyboardView.webContents.loadFile(path.join(__dirname, 'shell', 'keyboard.html'))
   overlayView.webContents.loadFile(path.join(__dirname, 'shell', 'overlay.html'))
 
   contentView.webContents.loadURL(config.homeUrl).catch((error) => {

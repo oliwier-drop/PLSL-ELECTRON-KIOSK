@@ -1,20 +1,20 @@
 const LAYOUT = {
   default: [
     '{esc} q w e r t y u i o p {bksp}',
-    '{tab} a s d f g h j k l {enter}',
-    '{caps} z x c v b n m , . {w11shift}',
+    '{caps} a s d f g h j k l {enter}',
+    '{w11shift} z x c v b n m , . {w11shift}',
     '{symbols} {space} {arrowleft} {arrowright}',
   ],
   shift: [
     '{esc} Q W E R T Y U I O P {bksp}',
-    '{tab} A S D F G H J K L {enter}',
-    '{caps} Z X C V B N M , . {w11shift}',
+    '{caps} A S D F G H J K L {enter}',
+    '{w11shift} Z X C V B N M , . {w11shift}',
     '{symbols} {space} {arrowleft} {arrowright}',
   ],
   symbols: [
     '1 2 3 4 5 6 7 8 9 0 {bksp}',
     '@ # $ & * ( ) - _ {enter}',
-    '{caps} ! ? ; : \' " , . {w11shift}',
+    '{w11shift} ! ? ; : \' " , . {w11shift}',
     '{symbols} {space} {arrowleft} {arrowright}',
   ],
 }
@@ -22,10 +22,9 @@ const LAYOUT = {
 const DISPLAY = {
   '{esc}': 'Esc',
   '{bksp}': '⌫',
-  '{tab}': 'Tab',
   '{enter}': '↵',
   '{w11shift}': '⇧',
-  '{caps}': '⇪',
+  '{caps}': '⇪ Caps',
   '{symbols}': '&123',
   '{space}': 'Spacja',
   '{arrowleft}': '←',
@@ -63,9 +62,9 @@ const HOLD_MS = 450
 const BUTTON_THEME = [
   { class: 'hg-key-esc', buttons: '{esc}' },
   { class: 'hg-key-bksp', buttons: '{bksp}' },
-  { class: 'hg-key-tab', buttons: '{tab}' },
+  { class: 'hg-key-caps', buttons: '{caps}' },
   { class: 'hg-key-enter', buttons: '{enter}' },
-  { class: 'hg-key-shift', buttons: '{w11shift} {caps}' },
+  { class: 'hg-key-shift', buttons: '{w11shift}' },
   { class: 'hg-key-space', buttons: '{space}' },
   { class: 'hg-key-mod', buttons: '{symbols} {arrowleft} {arrowright}' },
 ]
