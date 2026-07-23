@@ -295,12 +295,13 @@ function bindHoldHandlers(container) {
       const hot = highlightOptionAt(event.clientX, event.clientY)
       if (hot) {
         sendKey(hot.getAttribute('data-alt-char'))
-        hidePopup()
-        // Zablokuj nadchodzące onKeyReleased dla trzymanego klawisza,
-        // aby nie dosłać znaku bazowego po wyborze wariantu.
-        ignoreNextPress = true
         resetShiftAfterInput()
       }
+
+      hidePopup()
+      // Zablokuj nadchodzące onKeyReleased dla trzymanego klawisza,
+      // aby nie dosłać znaku bazowego po long-press.
+      ignoreNextPress = true
     },
     true
   )
@@ -318,24 +319,24 @@ function bindHoldHandlers(container) {
     event.preventDefault()
     event.stopPropagation()
   })
-
-  popupEl?.addEventListener('pointerup', (event) => {
-    const option = event.target.closest('[data-alt-char]')
-    if (!option) return
-
-    event.preventDefault()
-    event.stopPropagation()
-
-    sendKey(option.getAttribute('data-alt-char'))
-    hidePopup()
-    ignoreNextPress = false
-    resetShiftAfterInput()
-  })
 }
 
 const KeyboardCtor = getKeyboardConstructor()
 const keyboardContainer = document.querySelector('.simple-keyboard')
 popupEl = document.getElementById('key-alts-popup')
+
+async function applyKeyboardConfig() {
+  try {
+    const cfg = await window.kioskKeyboard?.getConfig?.()
+    if (cfg && typeof cfg.widthPercent === 'number') {
+      document.documentElement.style.setProperty('--keyboard-width', `${cfg.widthPercent}%`)
+    }
+  } catch {
+    // Keep CSS defaults when config IPC is unavailable.
+  }
+}
+
+applyKeyboardConfig()
 
 if (!KeyboardCtor || !keyboardContainer) {
   console.error('simple-keyboard nie załadował się poprawnie')

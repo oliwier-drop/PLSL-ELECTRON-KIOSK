@@ -11,7 +11,6 @@ const config = loadConfig()
 const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
-// keyboard logic is handled inline in main.js via keyboardView
 
 const PARTITION = 'persist:kiosk'
 
@@ -22,12 +21,11 @@ let overlayView = null
 let keyboardView = null
 let sessionManager = null
 let idleTimer = null
-let keyboardDebounce = null
 let isOverlayVisible = false
 let isKeyboardVisible = false
 let isEndingSession = false
 
-const KEYBOARD_HEIGHT = 270
+const KEYBOARD_HEIGHT = config.keyboard?.height ?? 270
 const activeDownloads = new Map()
 
 if (config.dev.ignoreCertificateErrors) {
@@ -64,13 +62,14 @@ function layoutViews() {
 
   const { width, height } = getWindowSize()
   const toolbarHeight = config.toolbarHeight
+  const keyboardSpace = isKeyboardVisible ? KEYBOARD_HEIGHT : 0
 
   toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
   contentView.setBounds({
     x: 0,
     y: toolbarHeight,
     width,
-    height: Math.max(0, height - toolbarHeight),
+    height: Math.max(0, height - toolbarHeight - keyboardSpace),
   })
 
   if (isOverlayVisible) {
@@ -84,17 +83,17 @@ function layoutViews() {
 
 function showKeyboard() {
   if (!win || win.isDestroyed() || isKeyboardVisible) return
-  const { width, height } = getWindowSize()
-  keyboardView.setBounds({ x: 0, y: height - KEYBOARD_HEIGHT, width, height: KEYBOARD_HEIGHT })
   win.contentView.addChildView(keyboardView)
   isKeyboardVisible = true
+  layoutViews()
 }
 
 function hideKeyboard() {
   if (!win || win.isDestroyed() || !isKeyboardVisible) return
   win.contentView.removeChildView(keyboardView)
   isKeyboardVisible = false
-  
+  layoutViews()
+
   // Blur active element on the page to remove focus
   if (contentView && !contentView.webContents.isDestroyed()) {
     contentView.webContents.send('blur-active-element')
@@ -251,12 +250,7 @@ function setupIpc() {
 
   ipcMain.on('keyboard:key', (_event, { key }) => {
     if (!contentView || contentView.webContents.isDestroyed()) return
-    const wc = contentView.webContents
-    
-    // Ensure contentView has focus before sending key
-    wc.focus()
-    
-    // Esc hides keyboard and blurs the input
+
     if (key === '{esc}') {
       hideKeyboard()
       if (!contentView.webContents.isDestroyed()) {
@@ -264,55 +258,22 @@ function setupIpc() {
       }
       return
     }
-    
-    const SPECIAL = {
-      '{bksp}': 'Backspace',
-      '{enter}': 'Return',
-      '{tab}': 'Tab',
-      '{arrowleft}': 'Left',
-      '{arrowright}': 'Right',
-    }
-    if (key === '{space}') {
-      wc.sendInputEvent({ type: 'char', keyCode: ' ' })
-      return
-    }
-    
-    // Special handling for Enter - trigger form submission
-    if (key === '{enter}') {
-      wc.executeJavaScript(`
-        (function() {
-          const el = document.activeElement
-          if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) {
-            // Trigger keydown and keyup events
-            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
-            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
-            el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true }))
-            
-            // Try to submit the form
-            let form = el.closest('form')
-            if (form) {
-              const submitEvent = new Event('submit', { bubbles: true, cancelable: true })
-              form.dispatchEvent(submitEvent)
-              if (!submitEvent.defaultPrevented) {
-                form.submit()
-              }
-            }
-          }
-        })()
-      `)
-      return
-    }
-    
-    const keyCode = SPECIAL[key]
-    if (keyCode) {
-      wc.sendInputEvent({ type: 'keyDown', keyCode })
-      wc.sendInputEvent({ type: 'keyUp', keyCode })
-      return
-    }
-    if (key && key.length === 1) {
-      wc.sendInputEvent({ type: 'char', keyCode: key })
-    }
+
+    // Nie przełączaj fokusu na contentView przy każdym klawiszu — Enova (i podobne)
+    // przy focus robi select-all i miga zaznaczeniem. Znaki wstrzykujemy do
+    // ostatniego pola przez preload, bez wc.focus()/sendInputEvent.
+    idleTimer?.reset()
+    contentView.webContents.send('keyboard:inject', { key })
   })
+
+  ipcMain.handle('keyboard:timing', () => ({
+    debounceMs: config.keyboard?.debounceMs ?? 300,
+    hideOnBlurDelayMs: config.keyboard?.hideOnBlurDelayMs ?? 200,
+  }))
+
+  ipcMain.handle('keyboard:config', () => ({
+    widthPercent: config.keyboard?.widthPercent ?? 65,
+  }))
 
   ipcMain.on('keyboard:focus', () => {
     idleTimer?.reset()
