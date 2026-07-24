@@ -29,6 +29,7 @@ W trybie deweloperskim aplikację można zamknąć skrótem `Ctrl+Shift+Q`.
 | **Wstecz** | Wraca do poprzedniej strony w historii |
 | **Strona główna** | Otwiera stronę startową bez wylogowywania |
 | **Odśwież** | Odświeża aktualną stronę |
+| **Klawiatura** | Pokazuje / ukrywa klawiaturę ekranową |
 | **Zakończ sesję** | Czyści cookies/cache **partycji personal** (hub, Enova) i wraca na stronę startową. Sesja **shared** (Jira) zostaje |
 
 Po **2 minutach 30 sekundach** bezczynności pojawia się ostrzeżenie z 30-sekundowym odliczaniem. Brak reakcji uruchamia tę samą procedurę co przycisk „Zakończ sesję”.
@@ -43,6 +44,8 @@ Kiosk ma dwie niezależne sesje przeglądarki:
 | `persist:kiosk-shared` (shared) | Jira (i później SharePoint) | **Bez** czyszczenia cookies |
 
 Gdy hub otwiera URL z listy `sharedOrigins`, Electron przełącza widok na shared (zalogowane konto serwisowe Jiry zostaje między użytkownikami kiosku).
+
+**Idle / hard cap** działają tylko w widoku **personal**. W Jirze (shared) timery są wstrzymane; po powrocie na hub odliczanie startuje od nowa.
 
 Klawiatura ekranowa pojawia się automatycznie po fokusie w polu tekstowym (`input` / `textarea`) jako osobny widok Electron na dole okna — bez systemowego TabTip. Widok strony jest wtedy zmniejszany, żeby pole nie chowało się pod klawiaturą.
 

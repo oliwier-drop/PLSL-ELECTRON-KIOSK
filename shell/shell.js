@@ -25,6 +25,18 @@ function notifyActivity() {
   window.kiosk?.activity?.ping()
 }
 
+function setKeyboardToggleUi(visible) {
+  const button = document.getElementById('keyboard-toggle')
+  if (!button) return
+
+  const label = button.querySelector('.btn-label')
+  button.classList.toggle('toolbar-btn--active', Boolean(visible))
+  button.setAttribute('aria-pressed', visible ? 'true' : 'false')
+  if (label) {
+    label.textContent = visible ? 'Ukryj klawiaturę' : 'Klawiatura'
+  }
+}
+
 document.getElementById('toolbar').addEventListener('click', async (event) => {
   const button = event.target.closest('[data-action]')
   if (!button || !window.kiosk) return
@@ -41,6 +53,11 @@ document.getElementById('toolbar').addEventListener('click', async (event) => {
     case 'refresh':
       await window.kiosk.nav.refresh()
       break
+    case 'keyboard-toggle': {
+      const result = await window.kiosk.keyboard.toggle()
+      setKeyboardToggleUi(Boolean(result?.visible))
+      break
+    }
     case 'end-session':
       window.kiosk.session.requestEnd()
       break
@@ -55,6 +72,9 @@ window.kiosk?.onSessionEnded?.((data) => {
   showToast(`Sesja zakończona. Adres: ${data?.url || homeUrl}`, 6000, 'success')
 })
 window.kiosk?.onSessionError?.((message) => showToast(message, 15000))
+window.kiosk?.keyboard?.onVisibility?.((data) => {
+  setKeyboardToggleUi(Boolean(data?.visible))
+})
 
 async function loadConfig() {
   const logo = document.getElementById('company-logo')

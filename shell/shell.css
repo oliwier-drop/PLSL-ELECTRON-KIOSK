@@ -130,6 +130,16 @@ body {
   outline-color: #fca5a5;
 }
 
+.toolbar-btn--active {
+  background: var(--accent);
+  border-color: #2563eb;
+}
+
+.toolbar-btn--active:hover,
+.toolbar-btn--active:focus-visible {
+  background: #2563eb;
+}
+
 .btn-icon {
   font-size: 1.4rem;
   line-height: 1;

@@ -201,6 +201,14 @@ function getActiveWebContents() {
   return workspace?.getActiveWebContents?.() ?? null
 }
 
+function notifyKeyboardVisibility() {
+  if (toolbarView && !toolbarView.webContents.isDestroyed()) {
+    toolbarView.webContents.send('keyboard:visibility', {
+      visible: isKeyboardVisible,
+    })
+  }
+}
+
 function showKeyboard() {
   if (!win || win.isDestroyed()) return
   if (isKeyboardVisible && keyboardProgress >= 1) return
@@ -213,6 +221,7 @@ function showKeyboard() {
   }
 
   isKeyboardVisible = true
+  notifyKeyboardVisibility()
   animateKeyboardTo(1)
 }
 
@@ -221,6 +230,7 @@ function hideKeyboard() {
   if (!isKeyboardVisible && keyboardProgress <= 0) return
 
   isKeyboardVisible = false
+  notifyKeyboardVisibility()
   animateKeyboardTo(0).then(() => {
     if (!win || win.isDestroyed() || isKeyboardVisible || keyboardProgress > 0) return
     try {
@@ -266,7 +276,28 @@ function hideOverlay() {
 
 function signalUserActivity(source) {
   if (sessionEnder?.isEnding()) return
+  // W Jirze (shared) timery sesji są wstrzymane — nie resetuj ich aktywnością.
+  if (workspace?.getActiveKind?.() === 'shared') return
   userActivityGate?.signal(source)
+}
+
+function pauseSessionTimersForShared() {
+  if (!idleTimer || !sessionLifetime) return
+  if (sessionEnder?.isEnding()) return
+
+  idleTimer.cancelWarning()
+  idleTimer.stopTimers()
+  sessionLifetime.disarm()
+  log('Timery sesji wstrzymane (widok shared / Jira)')
+}
+
+function resumeSessionTimersForPersonal() {
+  if (!idleTimer || !sessionLifetime) return
+  if (sessionEnder?.isEnding()) return
+
+  idleTimer.reset({ force: true })
+  sessionLifetime.arm()
+  log('Timery sesji wznowione od zera (widok personal)')
 }
 
 function attachInputActivityTracking(webContents, source) {
@@ -379,6 +410,15 @@ function setupIpc() {
   ipcMain.handle('keyboard:show', async () => {
     showKeyboard()
     return true
+  })
+
+  ipcMain.handle('keyboard:toggle', async () => {
+    if (isKeyboardVisible) {
+      hideKeyboard()
+      return { visible: false }
+    }
+    showKeyboard()
+    return { visible: true }
   })
 
   ipcMain.on('keyboard:hide', () => {
@@ -512,6 +552,13 @@ function createWindow() {
     homeUrl: config.homeUrl,
     sharedOrigins: config.sharedOrigins || [],
     restackChrome,
+    onActiveChange: (kind) => {
+      if (kind === 'shared') {
+        pauseSessionTimersForShared()
+      } else {
+        resumeSessionTimersForPersonal()
+      }
+    },
     log,
   })
 

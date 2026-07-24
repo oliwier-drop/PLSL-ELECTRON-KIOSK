@@ -63,6 +63,7 @@ function createContentWorkspace({
   homeUrl,
   sharedOrigins = [],
   restackChrome,
+  onActiveChange,
   log,
 } = {}) {
   let active = 'personal'
@@ -90,6 +91,7 @@ function createContentWorkspace({
 
     const next = kind === 'shared' ? 'shared' : 'personal'
     const nextView = next === 'shared' ? sharedView : personalView
+    const changed = active !== next
 
     try {
       win.contentView.removeChildView(personalView)
@@ -106,6 +108,14 @@ function createContentWorkspace({
     active = next
     restackChrome?.()
     log?.(`content workspace: active=${active}`)
+
+    if (changed) {
+      try {
+        onActiveChange?.(active)
+      } catch (error) {
+        log?.('onActiveChange błąd:', error.message)
+      }
+    }
   }
 
   async function showPersonal(url) {
