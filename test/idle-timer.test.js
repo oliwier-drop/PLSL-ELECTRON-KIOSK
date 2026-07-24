@@ -101,6 +101,35 @@ describe('IdleTimer', () => {
     timer.destroy()
   })
 
+  it('reset bez force nie przerywa odliczania — expire i tak następuje', () => {
+    const { timer, calls } = createTimer({ warningAfterMs: 50, countdownMs: 2000 })
+
+    mock.timers.tick(50)
+    assert.equal(timer.shouldIgnoreActivity(), true)
+
+    assert.equal(timer.reset(), false)
+    assert.equal(timer.reset(), false)
+    assert.equal(calls.onExpire, 0)
+
+    mock.timers.tick(2000)
+    assert.equal(calls.onExpire, 1)
+
+    timer.destroy()
+  })
+
+  it('reset({ force: true }) przerywa odliczanie', () => {
+    const { timer, calls } = createTimer({ warningAfterMs: 50, countdownMs: 2000 })
+
+    mock.timers.tick(50)
+    assert.equal(timer.reset({ force: true }), true)
+    assert.equal(calls.onExpire, 0)
+
+    mock.timers.tick(2000)
+    assert.equal(calls.onExpire, 0)
+
+    timer.destroy()
+  })
+
   it('stopTimers nie chowa ostrzeżenia', () => {
     const { timer, calls } = createTimer({ warningAfterMs: 50, countdownMs: 2000 })
 

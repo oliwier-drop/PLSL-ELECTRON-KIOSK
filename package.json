@@ -1,6 +1,6 @@
 {
   "name": "plsl-electron-kiosk",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Firmowy kiosk pracowniczy",
   "main": "main.js",
   "author": "Oliwier Drop",

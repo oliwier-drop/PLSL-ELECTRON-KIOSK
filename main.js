@@ -11,6 +11,11 @@ const config = loadConfig()
 const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
+const {
+  createSessionEnder,
+  withTimeout,
+  withTimeoutResolve,
+} = require('./src/session-ender')
 
 const PARTITION = 'persist:kiosk'
 
@@ -21,9 +26,9 @@ let overlayView = null
 let keyboardView = null
 let sessionManager = null
 let idleTimer = null
+let sessionEnder = null
 let isOverlayVisible = false
 let isKeyboardVisible = false
-let isEndingSession = false
 
 const KEYBOARD_HEIGHT = config.keyboard?.height ?? 270
 const activeDownloads = new Map()
@@ -138,9 +143,9 @@ function attachActivityTracking(webContents) {
 }
 
 function resetIdleIfActive() {
-  if (!isEndingSession) {
-    idleTimer?.reset()
-  }
+  if (sessionEnder?.isEnding()) return
+  if (idleTimer?.shouldIgnoreActivity?.()) return
+  idleTimer?.reset()
 }
 
 async function clearKioskSession() {
@@ -151,16 +156,8 @@ async function clearKioskSession() {
   }
   activeDownloads.clear()
 
-  await Promise.race([
-    kioskSession.clearStorageData(),
-    new Promise((resolve) => setTimeout(resolve, 8000)),
-  ])
-
-  await Promise.race([
-    kioskSession.clearCache(),
-    new Promise((resolve) => setTimeout(resolve, 5000)),
-  ])
-
+  await withTimeoutResolve(kioskSession.clearStorageData(), 8000)
+  await withTimeoutResolve(kioskSession.clearCache(), 5000)
   kioskSession.clearAuthCache()
 }
 
@@ -173,57 +170,55 @@ async function loadHome() {
     log('Nie udało się wyczyścić historii:', error.message)
   }
 
+  const LOAD_TIMEOUT_MS = 15_000
+
   try {
     log('Ładowanie strony głównej:', config.homeUrl)
-    await webContents.loadURL(config.homeUrl)
+    await withTimeout(
+      webContents.loadURL(config.homeUrl),
+      LOAD_TIMEOUT_MS,
+      'Timeout ładowania homeUrl'
+    )
   } catch (error) {
     log('Home nie załadowany, ładuję pustkę bezpieczeństwa:', error.message)
-    await webContents.loadURL('about:blank')
+    try {
+      await webContents.loadURL('about:blank')
+    } catch (blankError) {
+      log('Nie udało się załadować about:blank:', blankError.message)
+    }
   }
 
   return webContents.getURL()
 }
 
-async function endSession() {
-  if (isEndingSession) {
-    return { ok: true, url: contentView.webContents.getURL() }
-  }
+function createSessionEnderInstance() {
+  return createSessionEnder({
+    getCurrentUrl: () => contentView.webContents.getURL(),
+    stopIdleTimers: () => idleTimer?.stopTimers(),
+    showEndingOverlay: () => showOverlay('ending'),
+    hideKeyboard: () => {
+      if (isKeyboardVisible) hideKeyboard()
+    },
+    clearSession: () => clearKioskSession(),
+    loadHome: () => loadHome(),
+    hideOverlay: () => hideOverlay(),
+    notifySessionEnded: (url) => {
+      if (toolbarView && !toolbarView.webContents.isDestroyed()) {
+        toolbarView.webContents.send('session:ended', { url })
+      }
+    },
+    notifySessionError: (message) => {
+      if (toolbarView && !toolbarView.webContents.isDestroyed()) {
+        toolbarView.webContents.send('session:error', message)
+      }
+    },
+    restartIdleTimer: () => idleTimer?.reset({ force: true }),
+    log,
+  })
+}
 
-  isEndingSession = true
-
-  // Zatrzymaj odliczanie, ale NIE chowaj overlay — najpierw pokaż „Kończenie sesji…”.
-  idleTimer?.stopTimers()
-  showOverlay('ending')
-
-  try {
-    log('Zakończenie sesji, obecny URL:', contentView.webContents.getURL())
-
-    if (isKeyboardVisible) {
-      hideKeyboard()
-    }
-
-    await clearKioskSession()
-    const afterUrl = await loadHome()
-
-    hideOverlay()
-    idleTimer?.reset()
-
-    if (toolbarView && !toolbarView.webContents.isDestroyed()) {
-      toolbarView.webContents.send('session:ended', { url: afterUrl })
-    }
-
-    log('Reset sesji zakończony, adres:', afterUrl)
-    return { ok: true, url: afterUrl }
-  } catch (error) {
-    log('endSession błąd:', error.message)
-    hideOverlay()
-    if (toolbarView && !toolbarView.webContents.isDestroyed()) {
-      toolbarView.webContents.send('session:error', error.message)
-    }
-    return { ok: false, error: error.message }
-  } finally {
-    isEndingSession = false
-  }
+function endSession() {
+  return sessionEnder.endSession()
 }
 
 function setupIpc() {
@@ -380,6 +375,7 @@ function createWindow() {
   win.contentView.addChildView(toolbarView)
 
   sessionManager = new SessionManager(contentView, config)
+  sessionEnder = createSessionEnderInstance()
 
   attachWebContentsGuard(contentView.webContents)
   attachActivityTracking(contentView.webContents)
@@ -388,14 +384,15 @@ function createWindow() {
   idleTimer = new IdleTimer(config, {
     showWarning: (seconds) => showOverlay('idle', { seconds }),
     updateWarning: (seconds) => {
-      if (isOverlayVisible && !isEndingSession) {
+      if (isOverlayVisible && !sessionEnder?.isEnding()) {
         overlayView.webContents.send('overlay:mode', { mode: 'idle', seconds })
       }
     },
     hideWarning: () => {
-      if (isOverlayVisible && !isEndingSession) hideOverlay()
+      if (isOverlayVisible && !sessionEnder?.isEnding()) hideOverlay()
     },
     onExpire: () => {
+      log('IdleTimer: onExpire — automatyczne kończenie sesji')
       endSession().catch((error) => {
         log('auto idle end błąd:', error.message)
       })

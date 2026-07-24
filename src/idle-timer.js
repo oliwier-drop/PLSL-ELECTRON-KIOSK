@@ -7,7 +7,8 @@ class IdleTimer {
     this.countdownInterval = null
     this.remainingSeconds = 0
     this.isExpiring = false
-    this.reset()
+    this.warningActive = false
+    this.reset({ force: true })
   }
 
   clearTimers() {
@@ -25,6 +26,11 @@ class IdleTimer {
     }
   }
 
+  /** True while idle warning is on screen or session is expiring — ignore activity resets. */
+  shouldIgnoreActivity() {
+    return this.warningActive || this.isExpiring
+  }
+
   /** Stop timers without hiding the warning overlay (used while ending session). */
   stopTimers() {
     this.clearTimers()
@@ -32,12 +38,14 @@ class IdleTimer {
 
   showWarning() {
     this.isExpiring = false
-    this.remainingSeconds = Math.floor(this.config.idle.countdownMs / 1000)
+    this.warningActive = true
+    this.remainingSeconds = Math.max(1, Math.floor(this.config.idle.countdownMs / 1000))
     this.callbacks.showWarning?.(this.remainingSeconds)
 
     this.countdownInterval = setInterval(() => {
       this.remainingSeconds -= 1
       if (this.remainingSeconds <= 0) {
+        this.callbacks.updateWarning?.(0)
         this.expire()
         return
       }
@@ -52,6 +60,7 @@ class IdleTimer {
   expire() {
     if (this.isExpiring) return
     this.isExpiring = true
+    this.warningActive = false
     this.clearTimers()
     try {
       this.callbacks.onExpire?.()
@@ -63,26 +72,41 @@ class IdleTimer {
 
   cancelWarning() {
     this.isExpiring = false
+    this.warningActive = false
     this.clearTimers()
     this.callbacks?.hideWarning?.()
   }
 
-  reset() {
+  /**
+   * @param {{ force?: boolean }} [options]
+   * Without force, ignores resets while warning/expire is active so SPA
+   * navigation or toolbar pings cannot cancel the countdown.
+   */
+  reset(options = {}) {
+    const force = options.force === true
+    if (!force && this.shouldIgnoreActivity()) {
+      return false
+    }
+
     this.isExpiring = false
+    this.warningActive = false
     this.clearTimers()
     this.callbacks?.hideWarning?.()
 
     this.warningTimer = setTimeout(() => {
       this.showWarning()
     }, this.config.idle.warningAfterMs)
+
+    return true
   }
 
   continueSession() {
-    this.reset()
+    return this.reset({ force: true })
   }
 
   destroy() {
     this.isExpiring = false
+    this.warningActive = false
     this.clearTimers()
   }
 }
