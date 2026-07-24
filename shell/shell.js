@@ -47,7 +47,7 @@ document.getElementById('toolbar').addEventListener('click', async (event) => {
   }
 })
 
-;['mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'].forEach((eventName) => {
+;['mousedown', 'keydown', 'touchstart'].forEach((eventName) => {
   document.addEventListener(eventName, notifyActivity, { passive: true })
 })
 

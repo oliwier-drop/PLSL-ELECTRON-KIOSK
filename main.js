@@ -8,30 +8,49 @@ const {
 const path = require('node:path')
 const { loadConfig, getConfigPath } = require('./src/runtime-config')
 const config = loadConfig()
-const { attachWebContentsGuard } = require('./src/navigation-guard')
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
+const { createUserActivityGate } = require('./src/user-activity')
+const { createSessionLifetime } = require('./src/session-lifetime')
+const {
+  PERSONAL_PARTITION,
+  SHARED_PARTITION,
+  createContentWorkspace,
+  createPersonalSessionCleaner,
+} = require('./src/content-workspace')
 const {
   createSessionEnder,
   withTimeout,
   withTimeoutResolve,
 } = require('./src/session-ender')
 
-const PARTITION = 'persist:kiosk'
-
 let win = null
 let toolbarView = null
-let contentView = null
+let personalView = null
+let sharedView = null
 let overlayView = null
 let keyboardView = null
+let workspace = null
 let sessionManager = null
 let idleTimer = null
+let userActivityGate = null
+let sessionLifetime = null
 let sessionEnder = null
 let isOverlayVisible = false
 let isKeyboardVisible = false
+let keyboardProgress = 0
+let keyboardAnimTimer = null
+let keyboardAnimToken = 0
 
 const KEYBOARD_HEIGHT = config.keyboard?.height ?? 270
+const KEYBOARD_ANIM_MS = config.keyboard?.animationMs ?? 280
 const activeDownloads = new Map()
+
+const clearPersonalSession = createPersonalSessionCleaner({
+  getPersonalSession: () => session.fromPartition(PERSONAL_PARTITION),
+  getActiveDownloads: () => activeDownloads,
+  withTimeoutResolve,
+})
 
 if (config.dev.ignoreCertificateErrors) {
   app.commandLine.appendSwitch('ignore-certificate-errors')
@@ -42,14 +61,10 @@ function log(...args) {
 }
 
 log('Konfiguracja homeUrl:', config.homeUrl, '| plik:', getConfigPath())
+log('sharedOrigins:', (config.sharedOrigins || []).join(', ') || '(brak)')
 
-function getKioskSession() {
-  return session.fromPartition(PARTITION)
-}
-
-function setupKioskSession() {
-  const kioskSession = getKioskSession()
-
+function attachDownloadTracking(partitionName) {
+  const kioskSession = session.fromPartition(partitionName)
   kioskSession.on('will-download', (_event, item) => {
     const id = item.getURL()
     activeDownloads.set(id, item)
@@ -57,51 +72,167 @@ function setupKioskSession() {
   })
 }
 
+function setupKioskSessions() {
+  attachDownloadTracking(PERSONAL_PARTITION)
+  attachDownloadTracking(SHARED_PARTITION)
+}
+
 function getWindowSize() {
   const [width, height] = win.getContentSize()
   return { width, height }
 }
 
-function layoutViews() {
+function easeOutCubic(t) {
+  return 1 - (1 - t) ** 3
+}
+
+function stopKeyboardAnimation() {
+  if (keyboardAnimTimer) {
+    clearTimeout(keyboardAnimTimer)
+    keyboardAnimTimer = null
+  }
+  keyboardAnimToken += 1
+}
+
+function restackChrome() {
+  if (!win || win.isDestroyed()) return
+  if (toolbarView) {
+    try {
+      win.contentView.removeChildView(toolbarView)
+    } catch {
+      // ignore
+    }
+    win.contentView.addChildView(toolbarView)
+  }
+  if (isKeyboardVisible && keyboardView) {
+    try {
+      win.contentView.removeChildView(keyboardView)
+    } catch {
+      // ignore
+    }
+    win.contentView.addChildView(keyboardView)
+  }
+  if (isOverlayVisible && overlayView) {
+    try {
+      win.contentView.removeChildView(overlayView)
+    } catch {
+      // ignore
+    }
+    win.contentView.addChildView(overlayView)
+  }
+}
+
+function applyKeyboardLayout(progress) {
   if (!win || win.isDestroyed()) return
 
   const { width, height } = getWindowSize()
   const toolbarHeight = config.toolbarHeight
-  const keyboardSpace = isKeyboardVisible ? KEYBOARD_HEIGHT : 0
-
-  toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
-  contentView.setBounds({
+  const keyboardSpace = Math.round(KEYBOARD_HEIGHT * progress)
+  const contentBounds = {
     x: 0,
     y: toolbarHeight,
     width,
     height: Math.max(0, height - toolbarHeight - keyboardSpace),
-  })
+  }
+
+  toolbarView.setBounds({ x: 0, y: 0, width, height: toolbarHeight })
+  workspace?.setContentBounds(contentBounds)
 
   if (isOverlayVisible) {
     overlayView.setBounds({ x: 0, y: 0, width, height })
   }
 
-  if (isKeyboardVisible) {
-    keyboardView.setBounds({ x: 0, y: height - KEYBOARD_HEIGHT, width, height: KEYBOARD_HEIGHT })
+  if (progress > 0 || isKeyboardVisible) {
+    keyboardView.setBounds({
+      x: 0,
+      y: height - keyboardSpace,
+      width,
+      height: KEYBOARD_HEIGHT,
+    })
   }
 }
 
+function layoutViews() {
+  if (!win || win.isDestroyed()) return
+  applyKeyboardLayout(keyboardProgress)
+}
+
+function animateKeyboardTo(targetProgress) {
+  stopKeyboardAnimation()
+  const token = keyboardAnimToken
+  const startProgress = keyboardProgress
+  const delta = targetProgress - startProgress
+  if (Math.abs(delta) < 0.001) {
+    keyboardProgress = targetProgress
+    applyKeyboardLayout(keyboardProgress)
+    return Promise.resolve()
+  }
+
+  const startedAt = Date.now()
+  const duration = Math.max(1, Math.round(KEYBOARD_ANIM_MS * Math.abs(delta)))
+
+  return new Promise((resolve) => {
+    const tick = () => {
+      if (token !== keyboardAnimToken) {
+        resolve()
+        return
+      }
+
+      const t = Math.min(1, (Date.now() - startedAt) / duration)
+      keyboardProgress = startProgress + delta * easeOutCubic(t)
+      applyKeyboardLayout(keyboardProgress)
+
+      if (t < 1) {
+        keyboardAnimTimer = setTimeout(tick, 16)
+        return
+      }
+
+      keyboardAnimTimer = null
+      keyboardProgress = targetProgress
+      applyKeyboardLayout(keyboardProgress)
+      resolve()
+    }
+
+    tick()
+  })
+}
+
+function getActiveWebContents() {
+  return workspace?.getActiveWebContents?.() ?? null
+}
+
 function showKeyboard() {
-  if (!win || win.isDestroyed() || isKeyboardVisible) return
-  win.contentView.addChildView(keyboardView)
+  if (!win || win.isDestroyed()) return
+  if (isKeyboardVisible && keyboardProgress >= 1) return
+
+  if (!isKeyboardVisible) {
+    win.contentView.addChildView(keyboardView)
+    if (isOverlayVisible) {
+      win.contentView.addChildView(overlayView)
+    }
+  }
+
   isKeyboardVisible = true
-  layoutViews()
+  animateKeyboardTo(1)
 }
 
 function hideKeyboard() {
-  if (!win || win.isDestroyed() || !isKeyboardVisible) return
-  win.contentView.removeChildView(keyboardView)
-  isKeyboardVisible = false
-  layoutViews()
+  if (!win || win.isDestroyed()) return
+  if (!isKeyboardVisible && keyboardProgress <= 0) return
 
-  // Blur active element on the page to remove focus
-  if (contentView && !contentView.webContents.isDestroyed()) {
-    contentView.webContents.send('blur-active-element')
+  isKeyboardVisible = false
+  animateKeyboardTo(0).then(() => {
+    if (!win || win.isDestroyed() || isKeyboardVisible || keyboardProgress > 0) return
+    try {
+      win.contentView.removeChildView(keyboardView)
+    } catch {
+      // already removed
+    }
+  })
+
+  const active = getActiveWebContents()
+  if (active && !active.isDestroyed()) {
+    active.send('blur-active-element')
   }
 }
 
@@ -127,79 +258,84 @@ function hideOverlay() {
   win.contentView.removeChildView(overlayView)
   isOverlayVisible = false
 
-  if (contentView && !contentView.webContents.isDestroyed()) {
-    contentView.webContents.focus()
+  const active = getActiveWebContents()
+  if (active && !active.isDestroyed()) {
+    active.focus()
   }
 }
 
-function attachActivityTracking(webContents) {
-  const maybeResetIdle = () => {
-    resetIdleIfActive()
-  }
-
-  webContents.on('before-input-event', maybeResetIdle)
-  webContents.on('did-navigate', maybeResetIdle)
-  webContents.on('did-navigate-in-page', maybeResetIdle)
-}
-
-function resetIdleIfActive() {
+function signalUserActivity(source) {
   if (sessionEnder?.isEnding()) return
-  if (idleTimer?.shouldIgnoreActivity?.()) return
-  idleTimer?.reset()
+  userActivityGate?.signal(source)
 }
 
-async function clearKioskSession() {
-  const kioskSession = getKioskSession()
+function attachInputActivityTracking(webContents, source) {
+  webContents.on('before-input-event', (_event, input) => {
+    if (input.type !== 'keyDown' && input.type !== 'mouseDown') return
+    signalUserActivity(source)
+  })
+}
 
-  for (const item of activeDownloads.values()) {
-    item.cancel()
-  }
-  activeDownloads.clear()
-
-  await withTimeoutResolve(kioskSession.clearStorageData(), 8000)
-  await withTimeoutResolve(kioskSession.clearCache(), 5000)
-  kioskSession.clearAuthCache()
+function createBrowserView(partitionName) {
+  return new WebContentsView({
+    webPreferences: {
+      preload: path.join(__dirname, 'browser-preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      partition: partitionName,
+    },
+  })
 }
 
 async function loadHome() {
-  const webContents = contentView.webContents
-
-  try {
-    webContents.navigationHistory.clear()
-  } catch (error) {
-    log('Nie udało się wyczyścić historii:', error.message)
-  }
-
   const LOAD_TIMEOUT_MS = 15_000
 
   try {
-    log('Ładowanie strony głównej:', config.homeUrl)
+    const personalWc = personalView?.webContents
+    if (personalWc && !personalWc.isDestroyed()) {
+      try {
+        personalWc.navigationHistory.clear()
+      } catch (error) {
+        log('Nie udało się wyczyścić historii personal:', error.message)
+      }
+    }
+
+    log('Ładowanie strony głównej (personal):', config.homeUrl)
     await withTimeout(
-      webContents.loadURL(config.homeUrl),
+      workspace.showPersonal(config.homeUrl),
       LOAD_TIMEOUT_MS,
       'Timeout ładowania homeUrl'
     )
   } catch (error) {
     log('Home nie załadowany, ładuję pustkę bezpieczeństwa:', error.message)
     try {
-      await webContents.loadURL('about:blank')
+      await workspace.showPersonal('about:blank')
     } catch (blankError) {
       log('Nie udało się załadować about:blank:', blankError.message)
     }
   }
 
-  return webContents.getURL()
+  const active = getActiveWebContents()
+  return active && !active.isDestroyed() ? active.getURL() : config.homeUrl
 }
 
 function createSessionEnderInstance() {
   return createSessionEnder({
-    getCurrentUrl: () => contentView.webContents.getURL(),
-    stopIdleTimers: () => idleTimer?.stopTimers(),
+    getCurrentUrl: () => {
+      const active = getActiveWebContents()
+      return active && !active.isDestroyed() ? active.getURL() : null
+    },
+    stopIdleTimers: () => {
+      idleTimer?.stopTimers()
+      sessionLifetime?.disarm()
+    },
     showEndingOverlay: () => showOverlay('ending'),
     hideKeyboard: () => {
       if (isKeyboardVisible) hideKeyboard()
     },
-    clearSession: () => clearKioskSession(),
+    clearSession: () => clearPersonalSession(),
     loadHome: () => loadHome(),
     hideOverlay: () => hideOverlay(),
     notifySessionEnded: (url) => {
@@ -212,7 +348,10 @@ function createSessionEnderInstance() {
         toolbarView.webContents.send('session:error', message)
       }
     },
-    restartIdleTimer: () => idleTimer?.reset({ force: true }),
+    restartIdleTimer: () => {
+      idleTimer?.reset({ force: true })
+      sessionLifetime?.arm()
+    },
     log,
   })
 }
@@ -223,49 +362,47 @@ function endSession() {
 
 function setupIpc() {
   ipcMain.handle('nav:back', () => {
-    resetIdleIfActive()
+    signalUserActivity('nav-back')
     sessionManager?.goBack()
   })
 
   ipcMain.handle('nav:home', async () => {
-    resetIdleIfActive()
+    signalUserActivity('nav-home')
     await sessionManager?.goHome()
   })
 
   ipcMain.handle('nav:refresh', () => {
-    resetIdleIfActive()
+    signalUserActivity('nav-refresh')
     sessionManager?.refresh()
   })
 
   ipcMain.handle('keyboard:show', async () => {
-    resetIdleIfActive()
     showKeyboard()
     return true
   })
 
   ipcMain.on('keyboard:hide', () => {
     hideKeyboard()
-    if (contentView && !contentView.webContents.isDestroyed()) {
-      contentView.webContents.focus()
+    const active = getActiveWebContents()
+    if (active && !active.isDestroyed()) {
+      active.focus()
     }
   })
 
   ipcMain.on('keyboard:key', (_event, { key }) => {
-    if (!contentView || contentView.webContents.isDestroyed()) return
+    const active = getActiveWebContents()
+    if (!active || active.isDestroyed()) return
 
     if (key === '{esc}') {
       hideKeyboard()
-      if (!contentView.webContents.isDestroyed()) {
-        contentView.webContents.focus()
+      if (!active.isDestroyed()) {
+        active.focus()
       }
       return
     }
 
-    // Nie przełączaj fokusu na contentView przy każdym klawiszu — Enova (i podobne)
-    // przy focus robi select-all i miga zaznaczeniem. Znaki wstrzykujemy do
-    // ostatniego pola przez preload, bez wc.focus()/sendInputEvent.
-    resetIdleIfActive()
-    contentView.webContents.send('keyboard:inject', { key })
+    signalUserActivity('keyboard-key')
+    active.send('keyboard:inject', { key })
   })
 
   ipcMain.handle('keyboard:timing', () => ({
@@ -278,7 +415,6 @@ function setupIpc() {
   }))
 
   ipcMain.on('keyboard:focus', () => {
-    resetIdleIfActive()
     if (config.keyboard?.autoShowOnFocus !== false) {
       showKeyboard()
     }
@@ -289,12 +425,12 @@ function setupIpc() {
   })
 
   ipcMain.on('ui:show-confirm', () => {
-    resetIdleIfActive()
+    signalUserActivity('ui-confirm')
     showOverlay('confirm')
   })
 
   ipcMain.on('ui:hide-overlay', () => {
-    resetIdleIfActive()
+    signalUserActivity('ui-hide-overlay')
     hideOverlay()
   })
 
@@ -305,6 +441,7 @@ function setupIpc() {
   ipcMain.handle('idle:continue', () => {
     hideOverlay()
     idleTimer?.continueSession()
+    sessionLifetime?.arm()
   })
 
   ipcMain.handle('idle:endNow', async () => {
@@ -312,7 +449,12 @@ function setupIpc() {
   })
 
   ipcMain.on('activity:ping', () => {
-    resetIdleIfActive()
+    signalUserActivity('toolbar')
+  })
+
+  ipcMain.on('activity:user', (_event, payload) => {
+    const source = payload?.source || 'user'
+    signalUserActivity(source)
   })
 
   ipcMain.handle('config:get', () => ({
@@ -339,16 +481,8 @@ function createWindow() {
     },
   })
 
-  contentView = new WebContentsView({
-    webPreferences: {
-      preload: path.join(__dirname, 'browser-preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-      webSecurity: true,
-      partition: PARTITION,
-    },
-  })
+  personalView = createBrowserView(PERSONAL_PARTITION)
+  sharedView = createBrowserView(SHARED_PARTITION)
 
   overlayView = new WebContentsView({
     webPreferences: {
@@ -371,21 +505,44 @@ function createWindow() {
   })
   keyboardView.webContents.loadFile(path.join(__dirname, 'shell', 'keyboard.html'))
 
-  win.contentView.addChildView(contentView)
-  win.contentView.addChildView(toolbarView)
+  workspace = createContentWorkspace({
+    win,
+    personalView,
+    sharedView,
+    homeUrl: config.homeUrl,
+    sharedOrigins: config.sharedOrigins || [],
+    restackChrome,
+    log,
+  })
 
-  sessionManager = new SessionManager(contentView, config)
+  workspace.setActive('personal')
+
+  sessionManager = new SessionManager(workspace, config)
   sessionEnder = createSessionEnderInstance()
 
-  attachWebContentsGuard(contentView.webContents)
-  attachActivityTracking(contentView.webContents)
-  attachActivityTracking(toolbarView.webContents)
+  workspace.attachRouting(personalView.webContents, 'personal')
+  workspace.attachRouting(sharedView.webContents, 'shared')
+
+  attachInputActivityTracking(personalView.webContents, 'personal-input')
+  attachInputActivityTracking(sharedView.webContents, 'shared-input')
+  attachInputActivityTracking(toolbarView.webContents, 'toolbar-input')
+
+  sharedView.webContents.loadURL('about:blank').catch(() => {})
 
   idleTimer = new IdleTimer(config, {
-    showWarning: (seconds) => showOverlay('idle', { seconds }),
-    updateWarning: (seconds) => {
+    showWarning: (seconds, options = {}) => {
+      showOverlay('idle', {
+        seconds,
+        allowContinue: options.allowContinue !== false,
+      })
+    },
+    updateWarning: (seconds, options = {}) => {
       if (isOverlayVisible && !sessionEnder?.isEnding()) {
-        overlayView.webContents.send('overlay:mode', { mode: 'idle', seconds })
+        overlayView.webContents.send('overlay:mode', {
+          mode: 'idle',
+          seconds,
+          allowContinue: options.allowContinue !== false,
+        })
       }
     },
     hideWarning: () => {
@@ -399,6 +556,32 @@ function createWindow() {
     },
   })
 
+  const idleLog = config.dev?.logIdleResets ? log : undefined
+
+  userActivityGate = createUserActivityGate({
+    debounceMs: config.activityDebounceMs ?? 1000,
+    onActivity: () => idleTimer?.reset(),
+    shouldAllowReset: () => !idleTimer?.shouldIgnoreActivity?.(),
+    log: idleLog,
+  })
+
+  sessionLifetime = createSessionLifetime({
+    maxSessionMs: config.idle.endAfterMs,
+    warningMs: config.idle.countdownMs,
+    onWarning: () => {
+      log('SessionLifetime: ostrzeżenie przed twardym limitem sesji')
+      idleTimer?.forceWarning()
+    },
+    onExpire: () => {
+      log('SessionLifetime: twardy limit sesji — automatyczne kończenie')
+      endSession().catch((error) => {
+        log('hard cap end błąd:', error.message)
+      })
+    },
+    log: idleLog,
+  })
+  sessionLifetime.arm()
+
   layoutViews()
 
   win.on('resize', layoutViews)
@@ -406,7 +589,7 @@ function createWindow() {
   toolbarView.webContents.loadFile(path.join(__dirname, 'shell', 'index.html'))
   overlayView.webContents.loadFile(path.join(__dirname, 'shell', 'overlay.html'))
 
-  contentView.webContents.loadURL(config.homeUrl).catch((error) => {
+  personalView.webContents.loadURL(config.homeUrl).catch((error) => {
     log('Błąd startowej strony głównej:', error.message)
   })
 }
@@ -414,7 +597,7 @@ function createWindow() {
 app.whenReady().then(() => {
   const { globalShortcut } = require('electron')
 
-  setupKioskSession()
+  setupKioskSessions()
   setupIpc()
   createWindow()
 
@@ -434,7 +617,10 @@ app.whenReady().then(() => {
 app.on('will-quit', () => {
   const { globalShortcut } = require('electron')
   globalShortcut.unregisterAll()
+  stopKeyboardAnimation()
   idleTimer?.destroy()
+  userActivityGate?.destroy()
+  sessionLifetime?.destroy()
 })
 
 app.on('window-all-closed', () => {

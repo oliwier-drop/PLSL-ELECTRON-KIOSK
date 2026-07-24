@@ -146,6 +146,35 @@ describe('IdleTimer', () => {
     timer.destroy()
   })
 
+  it('interval aktualizuje do 0 ale expire tylko z setTimeout', () => {
+    const { timer, calls } = createTimer({ warningAfterMs: 50, countdownMs: 3000 })
+
+    mock.timers.tick(50)
+    mock.timers.tick(2000)
+
+    assert.equal(calls.onExpire, 0)
+    assert.ok(calls.updateWarning.includes(1))
+
+    mock.timers.tick(1000)
+    assert.equal(calls.onExpire, 1)
+
+    timer.destroy()
+  })
+
+  it('forceWarning blokuje soft reset, ale continueSession przedłuża sesję', () => {
+    const { timer, calls } = createTimer({ warningAfterMs: 5000, countdownMs: 2000 })
+
+    timer.forceWarning()
+    assert.deepEqual(calls.showWarning, [2])
+    assert.equal(timer.reset(), false)
+    assert.equal(timer.continueSession(), true)
+
+    mock.timers.tick(2000)
+    assert.equal(calls.onExpire, 0)
+
+    timer.destroy()
+  })
+
   it('cancelWarning chowa overlay i blokuje expire', () => {
     const { timer, calls } = createTimer({ warningAfterMs: 50, countdownMs: 2000 })
 

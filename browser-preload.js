@@ -207,6 +207,31 @@ function scheduleHide() {
   }, hideOnBlurDelayMs)
 }
 
+/** Ukryj klawiaturę po kliknięciu poza polem — nawet gdy SPA zostawia fokus w inpucie. */
+function hideKeyboardOutsideField() {
+  clearTimeout(debounceTimer)
+  clearTimeout(blurTimer)
+
+  if (lastTextInput && typeof lastTextInput.blur === 'function') {
+    try {
+      lastTextInput.blur()
+    } catch {
+      // ignore
+    }
+  }
+  if (document.activeElement && isTextInput(document.activeElement)) {
+    try {
+      document.activeElement.blur()
+    } catch {
+      // ignore
+    }
+  }
+
+  lastTextInput = null
+  lastSelection = { start: 0, end: 0 }
+  ipcRenderer.send('keyboard:blur')
+}
+
 document.addEventListener(
   'focusin',
   (event) => {
@@ -242,12 +267,21 @@ document.addEventListener(
 )
 
 document.addEventListener(
-  'click',
+  'pointerdown',
   (event) => {
-    if (isTextInput(event.target)) {
-      lastTextInput = event.target
-      rememberSelection(event.target)
+    if (!event.isTrusted) return
+
+    const target = event.target
+    if (isTextInput(target)) {
+      lastTextInput = target
+      rememberSelection(target)
       scheduleShow()
+      return
+    }
+
+    // Klik poza polem tekstowym — schowaj nawet gdy SPA nie robi blur.
+    if (lastTextInput || isTextInput(document.activeElement)) {
+      hideKeyboardOutsideField()
     }
   },
   true
@@ -265,3 +299,17 @@ ipcRenderer.on('blur-active-element', () => {
     document.activeElement.blur()
   }
 })
+
+const USER_ACTIVITY_KINDS = ['pointerdown', 'touchstart', 'keydown']
+
+for (const kind of USER_ACTIVITY_KINDS) {
+  document.addEventListener(
+    kind,
+    (event) => {
+      // Ignoruj zdarzenia syntetyczne SPA (Enova itd.) — tylko realny input użytkownika.
+      if (!event.isTrusted) return
+      ipcRenderer.send('activity:user', { source: `user-${kind}` })
+    },
+    { capture: true, passive: true }
+  )
+}

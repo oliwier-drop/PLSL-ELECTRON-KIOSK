@@ -47,6 +47,10 @@ body {
   display: none;
 }
 
+.hidden {
+  display: none !important;
+}
+
 .modal h2 {
   font-size: 1.5rem;
   margin-bottom: 1rem;

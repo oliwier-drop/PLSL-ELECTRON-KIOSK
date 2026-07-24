@@ -37,6 +37,7 @@ function showIdle(seconds) {
 
   confirmModal.classList.add('hidden')
   idleModal.classList.remove('hidden')
+  idleContinueBtn.classList.remove('hidden')
   document.getElementById('idle-countdown').textContent = String(seconds ?? 30)
 }
 

@@ -17,7 +17,14 @@ function loadConfig() {
       const runtime = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'))
 
       for (const [key, value] of Object.entries(runtime)) {
-        if (value !== undefined && value !== null && typeof value !== 'object') {
+        if (value === undefined || value === null) continue
+
+        if (key === 'sharedOrigins' && Array.isArray(value)) {
+          config.sharedOrigins = value.filter((item) => typeof item === 'string')
+          continue
+        }
+
+        if (typeof value !== 'object') {
           config[key] = value
         }
       }

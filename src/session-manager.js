@@ -1,12 +1,12 @@
 class SessionManager {
-  constructor(contentView, config) {
-    this.contentView = contentView
+  constructor(workspace, config) {
+    this.workspace = workspace
     this.config = config
   }
 
   goBack() {
-    const { webContents } = this.contentView
-    if (webContents.isDestroyed()) return
+    const webContents = this.workspace.getActiveWebContents()
+    if (!webContents || webContents.isDestroyed()) return
 
     const history = webContents.navigationHistory
     if (history?.canGoBack()) {
@@ -15,14 +15,12 @@ class SessionManager {
   }
 
   async goHome() {
-    const { webContents } = this.contentView
-    if (webContents.isDestroyed()) return
-    await webContents.loadURL(this.config.homeUrl)
+    await this.workspace.showPersonal(this.config.homeUrl)
   }
 
   refresh() {
-    const { webContents } = this.contentView
-    if (webContents.isDestroyed()) return
+    const webContents = this.workspace.getActiveWebContents()
+    if (!webContents || webContents.isDestroyed()) return
     webContents.reload()
   }
 }

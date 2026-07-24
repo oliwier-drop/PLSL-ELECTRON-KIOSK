@@ -8,6 +8,7 @@ class IdleTimer {
     this.remainingSeconds = 0
     this.isExpiring = false
     this.warningActive = false
+    this.forcedWarning = false
     this.reset({ force: true })
   }
 
@@ -36,20 +37,24 @@ class IdleTimer {
     this.clearTimers()
   }
 
-  showWarning() {
+  showWarning(options = {}) {
     this.isExpiring = false
     this.warningActive = true
+    this.forcedWarning = options.forced === true
     this.remainingSeconds = Math.max(1, Math.floor(this.config.idle.countdownMs / 1000))
-    this.callbacks.showWarning?.(this.remainingSeconds)
+    this.callbacks.showWarning?.(this.remainingSeconds, {
+      allowContinue: !this.forcedWarning,
+    })
 
     this.countdownInterval = setInterval(() => {
       this.remainingSeconds -= 1
       if (this.remainingSeconds <= 0) {
-        this.callbacks.updateWarning?.(0)
-        this.expire()
+        this.callbacks.updateWarning?.(0, { allowContinue: !this.forcedWarning })
         return
       }
-      this.callbacks.updateWarning?.(this.remainingSeconds)
+      this.callbacks.updateWarning?.(this.remainingSeconds, {
+        allowContinue: !this.forcedWarning,
+      })
     }, 1000)
 
     this.endTimer = setTimeout(() => {
@@ -57,10 +62,20 @@ class IdleTimer {
     }, this.config.idle.countdownMs)
   }
 
+  /**
+   * Start countdown immediately (used by hard session cap).
+   * Blocks soft-idle resets so SPA activity cannot hide the warning.
+   */
+  forceWarning() {
+    this.clearTimers()
+    this.showWarning({ forced: true })
+  }
+
   expire() {
     if (this.isExpiring) return
     this.isExpiring = true
     this.warningActive = false
+    this.forcedWarning = false
     this.clearTimers()
     try {
       this.callbacks.onExpire?.()
@@ -73,6 +88,7 @@ class IdleTimer {
   cancelWarning() {
     this.isExpiring = false
     this.warningActive = false
+    this.forcedWarning = false
     this.clearTimers()
     this.callbacks?.hideWarning?.()
   }
@@ -90,6 +106,7 @@ class IdleTimer {
 
     this.isExpiring = false
     this.warningActive = false
+    this.forcedWarning = false
     this.clearTimers()
     this.callbacks?.hideWarning?.()
 
@@ -101,12 +118,14 @@ class IdleTimer {
   }
 
   continueSession() {
+    this.forcedWarning = false
     return this.reset({ force: true })
   }
 
   destroy() {
     this.isExpiring = false
     this.warningActive = false
+    this.forcedWarning = false
     this.clearTimers()
   }
 }
