@@ -32,6 +32,10 @@ function createTimer(overrides = {}) {
     callbacks
   )
 
+  if (overrides.disarmed !== true) {
+    timer.reset({ force: true })
+  }
+
   return { timer, calls }
 }
 
@@ -93,7 +97,7 @@ describe('IdleTimer', () => {
     assert.equal(calls.showWarning.length, 1)
 
     timer.continueSession()
-    assert.equal(calls.hideWarning, 2) // reset w konstruktorze + continue/reset
+    assert.equal(calls.hideWarning, 3) // disarm + arm w createTimer + continue/reset
 
     mock.timers.tick(2000)
     assert.equal(calls.onExpire, 0)
@@ -186,6 +190,54 @@ describe('IdleTimer', () => {
 
     mock.timers.tick(5000)
     assert.equal(calls.onExpire, 0)
+
+    timer.destroy()
+  })
+
+  it('po konstrukcji nie pokazuje ostrzeżenia bez pierwszej aktywności', () => {
+    const { timer, calls } = createTimer({ disarmed: true, warningAfterMs: 100 })
+
+    assert.equal(timer.isArmed(), false)
+    mock.timers.tick(5000)
+    assert.equal(calls.showWarning.length, 0)
+    assert.equal(calls.onExpire, 0)
+
+    timer.destroy()
+  })
+
+  it('disarm() podczas odliczania blokuje expire', () => {
+    const { timer, calls } = createTimer({ warningAfterMs: 50, countdownMs: 2000 })
+
+    mock.timers.tick(50)
+    timer.disarm()
+    assert.equal(timer.isArmed(), false)
+
+    mock.timers.tick(5000)
+    assert.equal(calls.onExpire, 0)
+
+    timer.destroy()
+  })
+
+  it('soft reset() po disarm() uzbraja timer i uruchamia ostrzeżenie', () => {
+    const { timer, calls } = createTimer({ disarmed: true, warningAfterMs: 100 })
+
+    assert.equal(timer.reset(), true)
+    assert.equal(timer.isArmed(), true)
+
+    mock.timers.tick(100)
+    assert.deepEqual(calls.showWarning, [2])
+
+    timer.destroy()
+  })
+
+  it('reset({ force: true }) po disarm() uzbraja timer jak resume z Jiry', () => {
+    const { timer, calls } = createTimer({ disarmed: true, warningAfterMs: 100 })
+
+    assert.equal(timer.reset({ force: true }), true)
+    assert.equal(timer.isArmed(), true)
+
+    mock.timers.tick(100)
+    assert.deepEqual(calls.showWarning, [2])
 
     timer.destroy()
   })

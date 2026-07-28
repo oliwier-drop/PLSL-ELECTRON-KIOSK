@@ -9,6 +9,8 @@ module.exports = {
   ],
   idle: {
     warningAfterMs: 150_000,
+    // Nieużywane — zachowane dla kompatybilności ze starym config.json w ProgramData.
+    // Auto-koniec sesji robi wyłącznie soft-idle (warningAfterMs + countdownMs).
     endAfterMs: 180_000,
     countdownMs: 30_000,
   },
@@ -26,6 +28,6 @@ module.exports = {
   dev: {
     ignoreCertificateErrors: false,
     exitShortcut: 'CommandOrControl+Shift+Q',
-    logIdleResets: false,
+    logIdleResets: false, // true → log [idle] reset from: … (diagnostyka)
   },
 }

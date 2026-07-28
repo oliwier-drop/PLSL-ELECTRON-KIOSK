@@ -11,7 +11,6 @@ const config = loadConfig()
 const { SessionManager } = require('./src/session-manager')
 const { IdleTimer } = require('./src/idle-timer')
 const { createUserActivityGate } = require('./src/user-activity')
-const { createSessionLifetime } = require('./src/session-lifetime')
 const {
   PERSONAL_PARTITION,
   SHARED_PARTITION,
@@ -34,7 +33,6 @@ let workspace = null
 let sessionManager = null
 let idleTimer = null
 let userActivityGate = null
-let sessionLifetime = null
 let sessionEnder = null
 let isOverlayVisible = false
 let isKeyboardVisible = false
@@ -282,27 +280,27 @@ function signalUserActivity(source) {
 }
 
 function pauseSessionTimersForShared() {
-  if (!idleTimer || !sessionLifetime) return
+  if (!idleTimer) return
   if (sessionEnder?.isEnding()) return
 
   idleTimer.cancelWarning()
   idleTimer.stopTimers()
-  sessionLifetime.disarm()
   log('Timery sesji wstrzymane (widok shared / Jira)')
 }
 
 function resumeSessionTimersForPersonal() {
-  if (!idleTimer || !sessionLifetime) return
+  if (!idleTimer) return
   if (sessionEnder?.isEnding()) return
 
   idleTimer.reset({ force: true })
-  sessionLifetime.arm()
   log('Timery sesji wznowione od zera (widok personal)')
 }
 
 function attachInputActivityTracking(webContents, source) {
+  // Tylko fizyczna klawiatura. Klik/dotyk idzie przez preload (activity:user, isTrusted).
+  // Nie bierzemy mouseDown/mouseMove z before-input-event — ruch myszy nie może resetować idle.
   webContents.on('before-input-event', (_event, input) => {
-    if (input.type !== 'keyDown' && input.type !== 'mouseDown') return
+    if (input?.type !== 'keyDown' && input?.type !== 'rawKeyDown') return
     signalUserActivity(source)
   })
 }
@@ -360,7 +358,6 @@ function createSessionEnderInstance() {
     },
     stopIdleTimers: () => {
       idleTimer?.stopTimers()
-      sessionLifetime?.disarm()
     },
     showEndingOverlay: () => showOverlay('ending'),
     hideKeyboard: () => {
@@ -379,9 +376,8 @@ function createSessionEnderInstance() {
         toolbarView.webContents.send('session:error', message)
       }
     },
-    restartIdleTimer: () => {
-      idleTimer?.reset({ force: true })
-      sessionLifetime?.arm()
+    disarmIdleTimer: () => {
+      idleTimer?.disarm()
     },
     log,
   })
@@ -481,7 +477,6 @@ function setupIpc() {
   ipcMain.handle('idle:continue', () => {
     hideOverlay()
     idleTimer?.continueSession()
-    sessionLifetime?.arm()
   })
 
   ipcMain.handle('idle:endNow', async () => {
@@ -612,23 +607,6 @@ function createWindow() {
     log: idleLog,
   })
 
-  sessionLifetime = createSessionLifetime({
-    maxSessionMs: config.idle.endAfterMs,
-    warningMs: config.idle.countdownMs,
-    onWarning: () => {
-      log('SessionLifetime: ostrzeżenie przed twardym limitem sesji')
-      idleTimer?.forceWarning()
-    },
-    onExpire: () => {
-      log('SessionLifetime: twardy limit sesji — automatyczne kończenie')
-      endSession().catch((error) => {
-        log('hard cap end błąd:', error.message)
-      })
-    },
-    log: idleLog,
-  })
-  sessionLifetime.arm()
-
   layoutViews()
 
   win.on('resize', layoutViews)
@@ -667,7 +645,6 @@ app.on('will-quit', () => {
   stopKeyboardAnimation()
   idleTimer?.destroy()
   userActivityGate?.destroy()
-  sessionLifetime?.destroy()
 })
 
 app.on('window-all-closed', () => {

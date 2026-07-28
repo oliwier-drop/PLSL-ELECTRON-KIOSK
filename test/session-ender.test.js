@@ -28,7 +28,7 @@ function createTrackingEnder(overrides = {}) {
     hideOverlay: () => steps.push('hideOverlay'),
     notifySessionEnded: (url) => steps.push(`ended:${url}`),
     notifySessionError: (msg) => steps.push(`error:${msg}`),
-    restartIdleTimer: () => steps.push('restartIdle'),
+    disarmIdleTimer: () => steps.push('disarmIdle'),
     log: () => {},
     ...overrides,
   })
@@ -50,7 +50,7 @@ describe('session-ender endSession', () => {
       'loadHome',
       'hideOverlay',
       'ended:https://home.example',
-      'restartIdle',
+      'disarmIdle',
     ])
     assert.equal(ender.isEnding(), false)
   })
@@ -83,10 +83,10 @@ describe('session-ender endSession', () => {
     assert.equal(b.ok, true)
     assert.equal(b.skipped, true)
     assert.equal(steps.filter((s) => s === 'clearSession').length, 1)
-    assert.equal(steps.filter((s) => s === 'restartIdle').length, 1)
+    assert.equal(steps.filter((s) => s === 'disarmIdle').length, 1)
   })
 
-  it('przy błędzie clearSession chowa overlay, raportuje błąd i restartuje idle', async () => {
+  it('przy błędzie clearSession chowa overlay, raportuje błąd i rozbraja idle', async () => {
     const { ender, steps } = createTrackingEnder({
       clearSession: async () => {
         steps.push('clearSession')
@@ -101,12 +101,12 @@ describe('session-ender endSession', () => {
     assert.ok(steps.includes('showEnding'))
     assert.ok(steps.includes('hideOverlay'))
     assert.ok(steps.includes('error:storage locked'))
-    assert.ok(steps.includes('restartIdle'))
+    assert.ok(steps.includes('disarmIdle'))
     assert.ok(!steps.includes('loadHome'))
     assert.equal(ender.isEnding(), false)
   })
 
-  it('przy błędzie loadHome nadal restartuje idle w finally', async () => {
+  it('przy błędzie loadHome nadal rozbraja idle w finally', async () => {
     const { ender, steps } = createTrackingEnder({
       loadHome: async () => {
         steps.push('loadHome')
@@ -119,7 +119,7 @@ describe('session-ender endSession', () => {
     assert.equal(result.ok, false)
     assert.equal(result.error, 'dns fail')
     assert.ok(steps.includes('clearSession'))
-    assert.ok(steps.includes('restartIdle'))
+    assert.ok(steps.includes('disarmIdle'))
   })
 })
 
@@ -167,6 +167,7 @@ describe('IdleTimer + SessionEnder integration', () => {
         },
       }
     )
+    timer.reset({ force: true })
 
     mock.timers.tick(100)
     assert.ok(steps.includes('warn'))
@@ -187,7 +188,7 @@ describe('IdleTimer + SessionEnder integration', () => {
     assert.ok(steps.includes('clearSession'))
     assert.ok(steps.includes('loadHome'))
     assert.ok(steps.includes('hideOverlay'))
-    assert.ok(steps.includes('restartIdle'))
+    assert.ok(steps.includes('disarmIdle'))
     assert.equal(steps.filter((s) => s === 'expire').length, 1)
 
     timer.destroy()
@@ -208,6 +209,7 @@ describe('IdleTimer + SessionEnder integration', () => {
         },
       }
     )
+    timer.reset({ force: true })
 
     mock.timers.tick(50)
     timer.continueSession()
@@ -240,6 +242,7 @@ describe('IdleTimer + SessionEnder integration', () => {
         },
       }
     )
+    timer.reset({ force: true })
 
     mock.timers.tick(50)
     const result = await ender.endSession()

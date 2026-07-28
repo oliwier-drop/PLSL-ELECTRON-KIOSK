@@ -9,7 +9,22 @@ class IdleTimer {
     this.isExpiring = false
     this.warningActive = false
     this.forcedWarning = false
-    this.reset({ force: true })
+    this.armed = false
+    this.disarm()
+  }
+
+  isArmed() {
+    return this.armed
+  }
+
+  /** Stop idle tracking until the next user activity arms the timer again. */
+  disarm() {
+    this.armed = false
+    this.isExpiring = false
+    this.warningActive = false
+    this.forcedWarning = false
+    this.clearTimers()
+    this.callbacks?.hideWarning?.()
   }
 
   clearTimers() {
@@ -63,7 +78,7 @@ class IdleTimer {
   }
 
   /**
-   * Start countdown immediately (used by hard session cap).
+   * Start countdown immediately (e.g. tests / future forced warning).
    * Blocks soft-idle resets so SPA activity cannot hide the warning.
    */
   forceWarning() {
@@ -104,6 +119,10 @@ class IdleTimer {
       return false
     }
 
+    if (!this.armed) {
+      this.armed = true
+    }
+
     this.isExpiring = false
     this.warningActive = false
     this.forcedWarning = false
@@ -123,6 +142,7 @@ class IdleTimer {
   }
 
   destroy() {
+    this.armed = false
     this.isExpiring = false
     this.warningActive = false
     this.forcedWarning = false

@@ -32,7 +32,9 @@ W trybie deweloperskim aplikację można zamknąć skrótem `Ctrl+Shift+Q`.
 | **Klawiatura** | Pokazuje / ukrywa klawiaturę ekranową |
 | **Zakończ sesję** | Czyści cookies/cache **partycji personal** (hub, Enova) i wraca na stronę startową. Sesja **shared** (Jira) zostaje |
 
-Po **2 minutach 30 sekundach** bezczynności pojawia się ostrzeżenie z 30-sekundowym odliczaniem. Brak reakcji uruchamia tę samą procedurę co przycisk „Zakończ sesję”.
+Po **2 minutach 30 sekundach** bezczynności pojawia się ostrzeżenie z 30-sekundowym odliczaniem i przyciskiem **Anuluj**. Brak reakcji (lub „Zakończ teraz”) uruchamia kończenie sesji personal. W Jirze (shared) timer jest wstrzymany.
+
+**Timer nie startuje sam:** po starcie aplikacji i po zakończeniu sesji kiosk czeka w stanie spoczynku — bez modala i bez ponownego czyszczenia co 3 minuty. Odliczanie bezczynności włącza się dopiero po **pierwszej interakcji** użytkownika (dotyk, klik, klawisz w widoku personal). Po restarcie aplikacji bez dotknięcia ekranu nie ma auto-czyszczenia „zapomnianej” sesji personal; czyszczenie nastąpi dopiero po interakcji + bezczynności albo ręcznym „Zakończ sesję”.
 
 ### Partycje sesji (personal / shared)
 
@@ -45,7 +47,7 @@ Kiosk ma dwie niezależne sesje przeglądarki:
 
 Gdy hub otwiera URL z listy `sharedOrigins`, Electron przełącza widok na shared (zalogowane konto serwisowe Jiry zostaje między użytkownikami kiosku).
 
-**Idle / hard cap** działają tylko w widoku **personal**. W Jirze (shared) timery są wstrzymane; po powrocie na hub odliczanie startuje od nowa.
+**Soft-idle** działa tylko w widoku **personal** (hub / Enova). W Jirze (shared) timer jest wstrzymany; po powrocie na hub odliczanie bezczynności startuje od nowa. Nie ma twardego limitu czasu niezależnego od aktywności. Na pustym hubie (start lub po końcu sesji) timer jest wyłączony do pierwszego dotknięcia ekranu.
 
 Klawiatura ekranowa pojawia się automatycznie po fokusie w polu tekstowym (`input` / `textarea`) jako osobny widok Electron na dole okna — bez systemowego TabTip. Widok strony jest wtedy zmniejszany, żeby pole nie chowało się pod klawiaturą.
 
@@ -88,9 +90,9 @@ module.exports = {
     'https://jira.htpl.internal',
   ],
   idle: {
-    warningAfterMs: 150_000,  // 2 min 30 s
-    endAfterMs: 180_000,      // 3 min
-    countdownMs: 30_000,      // 30 s na reakcję
+    warningAfterMs: 150_000,  // 2 min 30 s bezczynności → modal
+    endAfterMs: 180_000,      // nieużywane (kompatybilność ze starym config.json)
+    countdownMs: 30_000,      // 30 s odliczania na modalu
   },
   toolbarHeight: 80,
   keyboard: {
@@ -154,8 +156,7 @@ Na produkcji zainstaluj firmowy certyfikat CA w systemie Windows. W środowisku 
 │   ├── session-manager.js   # Nawigacja toolbar (aktywny view)
 │   ├── session-ender.js     # Sekwencja kończenia sesji
 │   ├── navigation-guard.js  # Obsługa popupów w tym samym oknie
-│   ├── idle-timer.js        # Timeout bezczynności
-│   ├── session-lifetime.js  # Twardy limit sesji
+│   ├── idle-timer.js        # Soft-idle (bezczynność → countdown → end)
 │   ├── user-activity.js     # Debounce aktywności użytkownika
 │   └── runtime-config.js    # Wczytywanie config.json z ProgramData
 ├── build/

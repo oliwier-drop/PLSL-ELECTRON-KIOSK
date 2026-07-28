@@ -33,7 +33,10 @@ function showConfirm() {
 }
 
 function showIdle(seconds) {
-  if (isBusy) return
+  // Idle countdown must always be visible — clear leftover "ending" busy state.
+  if (isBusy) {
+    setIdleBusy(false)
+  }
 
   confirmModal.classList.add('hidden')
   idleModal.classList.remove('hidden')

@@ -43,7 +43,7 @@ function createSessionEnder(deps = {}) {
       return { ok: false, error: message }
     } finally {
       isEndingSession = false
-      deps.restartIdleTimer?.()
+      deps.disarmIdleTimer?.()
     }
   }
 

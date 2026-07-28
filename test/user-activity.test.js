@@ -96,6 +96,7 @@ describe('UserActivityGate + IdleTimer', () => {
         onExpire: () => {},
       }
     )
+    timer.reset({ force: true })
 
     const gate = createUserActivityGate({
       debounceMs: 0,
